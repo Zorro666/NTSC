@@ -4,16 +4,25 @@
 #include <GL/glfw3.h>
 #include <GL/glext.h>
 
-const unsigned int WIDTH=910;
-const unsigned int HEIGHT=262*2;
-const unsigned int MAIN_WINDOW=0;
-
 #define MAX_WINDOWS 8
 static GLFWwindow windows[MAX_WINDOWS];
 static unsigned char *videoMemory[MAX_WINDOWS];
 static GLuint videoTexture[MAX_WINDOWS];
 
-void ShowScreen(unsigned int windowNum, unsigned int w, unsigned int h)
+static int FindWindowNum(GLFWwindow glfwWindow)
+{
+	int i;
+	for (i = 0; i < MAX_WINDOWS; i++)
+	{
+		if (windows[i] == glfwWindow)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+static void ShowScreen(unsigned int windowNum, unsigned int w, unsigned int h)
 {
 	glBindTexture(GL_TEXTURE_RECTANGLE_NV, (GLuint)videoTexture[windowNum]);
 
@@ -37,7 +46,7 @@ void ShowScreen(unsigned int windowNum, unsigned int w, unsigned int h)
 	glFlush();
 }
 
-void setupGL(unsigned int windowNum, unsigned int w, unsigned int h) 
+static void setupGL(unsigned int windowNum, unsigned int w, unsigned int h) 
 {
 	unsigned int memSize = (unsigned int)w * (unsigned int)h * sizeof(unsigned int);
 	videoTexture[windowNum] = windowNum+1;
@@ -79,117 +88,36 @@ void setupGL(unsigned int windowNum, unsigned int w, unsigned int h)
 	glDisable(GL_DEPTH_TEST);
 }
 
-void restoreGL(unsigned int windowNum, unsigned int w, unsigned int h) 
-{
-	/* Tell OpenGL how to convert from coordinates to pixel values */
-	glViewport(0, 0, (GLsizei)w, (GLsizei)h);
-
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-	glClearColor(1.0f, 0.f, 1.0f, 1.0f);
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity(); 
-
-	glDisable(GL_TEXTURE_2D);
-	glEnable(GL_TEXTURE_RECTANGLE_NV);
-	glDisable(GL_DEPTH_TEST);
-	(void)windowNum;
-}
-
 struct KeyArray
 {
 	unsigned char lastState;
 	unsigned char curState;
 	unsigned char debounced;
-	GLFWwindow    window;
+	int window;
 };
 
 struct KeyArray keyArray[512];
 
-int KeyDown(int key)
+static void kbHandler(GLFWwindow glfwWindow, int key, int action) 
 {
-	return keyArray[key].curState==GLFW_PRESS;
-}
-
-int CheckKey(int key)
-{
-	return keyArray[key].debounced;
-}
-
-int CheckKeyWindow(int key, GLFWwindow window)
-{
-	return keyArray[key].debounced && (keyArray[key].window==window);
-}
-
-void ClearKey(int key)
-{
-	keyArray[key].debounced=0;
-}
-
-void kbHandler( GLFWwindow window, int key, int action )
-{
+	const int window = FindWindowNum(glfwWindow);
 	keyArray[key].lastState = keyArray[key].curState;
 	keyArray[key].curState = (unsigned char)action;
-	keyArray[key].debounced |= (unsigned char)((keyArray[key].lastState==GLFW_RELEASE)&&(keyArray[key].curState==GLFW_PRESS));
+	keyArray[key].debounced |= (unsigned char)((keyArray[key].lastState == GLFW_RELEASE)&&(keyArray[key].curState == GLFW_PRESS));
 	keyArray[key].window = window;
+	if (action == GLFW_PRESS)
+	{
+		printf("Key 0x%X down\n", key);
+	}
 }
 
-void sizeHandler(GLFWwindow window, int xs, int ys)
+static void sizeHandler(GLFWwindow window, int xs, int ys)
 {
 	glfwMakeContextCurrent(window);
-	(void)window;
 	glViewport(0, 0, xs, ys);
 }
 
-void AttachImage(const char* fileName);
-void SaveTAP(const char* filename);
-
-uint8_t CheckKeys(int key0, int key1, int key2, int key3, int key4, int key5, int key6, int key7)
-{
-	uint8_t keyVal=0xFF;
-
-	if (KeyDown(key0))
-	{
-		keyVal = (uint8_t)(keyVal & ~0x01);
-	}
-	if (KeyDown(key1))
-	{
-		keyVal = (uint8_t)(keyVal & ~0x02);
-	}
-	if (KeyDown(key2))
-	{
-		keyVal = (uint8_t)(keyVal & ~0x04);
-	}
-	if (KeyDown(key3))
-	{
-		keyVal = (uint8_t)(keyVal & ~0x08);
-	}
-	if (KeyDown(key4))
-	{
-		keyVal = (uint8_t)(keyVal & ~0x10);
-	}
-	if (KeyDown(key5))
-	{
-		keyVal = (uint8_t)(keyVal & ~0x20);
-	}
-	if (KeyDown(key6))
-	{
-		keyVal = (uint8_t)(keyVal & ~0x40);
-	}
-	if (KeyDown(key7))
-	{
-		keyVal = (uint8_t)(keyVal & ~0x80);
-	}
-
-	return keyVal;
-}
-
-int windowSetup(void)
+int windowSetup(const unsigned int window, const unsigned int width, const unsigned int height)
 {
 	unsigned int w;
 	unsigned int h;
@@ -198,36 +126,63 @@ int windowSetup(void)
 	glfwInit(); 
 
 	/* Open screen OpenGL window */
-	if(!(windows[MAIN_WINDOW] = glfwOpenWindow((int)WIDTH, (int)HEIGHT, GLFW_WINDOWED, "NTSC Decode", NULL)) ) 
+	if(!(windows[window] = glfwOpenWindow((int)width, (int)height, GLFW_WINDOWED, "NTSC Decode", NULL)) ) 
 	{ 
 		glfwTerminate(); 
 		return 1; 
 	} 
 
-	glfwSetWindowPos(windows[MAIN_WINDOW], 0, 300);
+	glfwSetWindowPos(windows[window], 0, 300);
 
-	glfwMakeContextCurrent(windows[MAIN_WINDOW]);
-	setupGL(MAIN_WINDOW, WIDTH, HEIGHT);
+	glfwMakeContextCurrent(windows[window]);
+	setupGL(window, width, height);
 
 	glfwSwapInterval(0);			/* Disable VSYNC */
 
-	glfwGetWindowSize(windows[MAIN_WINDOW], (int*)&w, (int*)&h);
+	glfwGetWindowSize(windows[window], (int*)&w, (int*)&h);
 
-	/* printf("width : %d (%d) , height : %d (%d)\n", w, WIDTH, h, HEIGHT); */
+	/* printf("width : %d (%d) , height : %d (%d)\n", w, width, h, height); */
 	glfwSetKeyCallback(kbHandler);
 	glfwSetWindowSizeCallback(sizeHandler);
 
 	return 0;
 }
 
+void windowUpdate(const unsigned int window, const unsigned int width, const unsigned int height)
+{
+	glfwMakeContextCurrent(windows[window]);
+	ShowScreen(window, width, height);
+	glfwSwapBuffers();
+}
+
 void windowMainLoop(void)
 {
-	glfwMakeContextCurrent(windows[MAIN_WINDOW]);
-	ShowScreen(MAIN_WINDOW, WIDTH, HEIGHT);
-	glfwSwapBuffers();
-
 	glfwPollEvents();
 }
 
+unsigned char* windowGetVideoMemoryBGRA(const unsigned int window)
+{
+	return videoMemory[window];
+}
+
+int windowKeyDown(const int key)
+{
+	return keyArray[key].curState == GLFW_PRESS;
+}
+
+int windowCheckKey(const int key)
+{
+	return keyArray[key].debounced;
+}
+
+int windowCheckKeyWindow(const int key, const int window)
+{
+	return keyArray[key].debounced && (keyArray[key].window == window);
+}
+
+void windowClearKey(const int key)
+{
+	keyArray[key].debounced=0;
+}
 
 
