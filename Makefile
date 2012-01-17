@@ -20,12 +20,14 @@ define C_PROJECT_template
 $2_SRCFILES += $1.c
 $2_SRCFILES += $($2_DEPENDS)
 $2_DEPEND_OBJS:=$($2_DEPENDS:.c=.o)
+$2_DFILES:=$$($2_SRCFILES:.c=.d)
 
 $2_OBJFILE:=$1.o
 $2_OBJFILES:=$$($2_SRCFILES:.c=.o)
 
 C_SRCFILES += $$($2_SRCFILES)
 C_OBJFILES += $$($2_OBJFILES)
+C_DFILES += $$($2_DFILES)
 
 C_TARGETS += $1
 
@@ -40,6 +42,7 @@ test:
 	@echo C_TARGETS=$(C_TARGETS)
 	@echo C_SRCFILES=$(C_SRCFILES)
 	@echo C_OBJFILES=$(C_OBJFILES)
+	@echo C_DFILES=$(C_DFILES)
 
 %.8: %.go
 	@echo Go Compiling $<
@@ -63,8 +66,14 @@ test:
 FORCE:
 
 clean: FORCE
-	rm -f $(C_OBJFILES)
+	@$(RM) -vf $(C_OBJFILES)
+	@$(RM) -vf $(C_DFILES)
+	@$(RM) -vf tags
+	@$(RM) -vf cscope.out
+	@$(RM) -vf cscope.in.out
+	@$(RM) -vf cscope.po.out
 
 nuke: clean
-	rm -f $(C_TARGETS)
+	@$(RM) -vf $(C_TARGETS)
 
+sinclude $(C_DFILES)
