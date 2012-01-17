@@ -1,11 +1,19 @@
-C_LIBS=-lGL ./libglfw3.a
 C_CPP_COMMON_COMPILE_FLAGS:= -O3 -g -Wall -Wextra -Wuninitialized -Winit-self -Wstrict-aliasing -Wfloat-equal -Wshadow -Wconversion -Werror -fpack-struct=4
 
 C_COMPILE:=gcc -c
 C_COMPILE_FLAGS:=-ansi -pedantic-errors
 
+C_LIBS=./libglfw3.a
 C_LINK:=g++
 C_LINK_FLAGS:=-g -lm -lpthread $(C_LIBS)
+
+ifdef WINDIR
+C_TARGET_EXTENSION := .exe
+C_LINK_FLAGS += -lopengl32
+else
+C_LINK_FLAGS += -lGL
+C_TARGET_EXTENSION := 
+endif	# ifdef WINDIR
 
 DECODE_DEPENDS:=window.c
 C_PROJECTS:=decode
@@ -37,12 +45,17 @@ endef
      
 $(foreach project,$(C_PROJECTS),$(eval $(call C_PROJECT_template,$(project),$(call upperString,$(project)))))
 
+C_TARGET_EXES := $(foreach target,$(C_TARGETS),$(target)$(C_TARGET_EXTENSION))
+
 test:
 	@echo C_PROJECTS=$(C_PROJECTS)
 	@echo C_TARGETS=$(C_TARGETS)
 	@echo C_SRCFILES=$(C_SRCFILES)
 	@echo C_OBJFILES=$(C_OBJFILES)
 	@echo C_DFILES=$(C_DFILES)
+	@echo C_TARGET_EXTENSION=$(C_TARGET_EXTENSION)
+	@echo C_TARGET_EXES=$(C_TARGET_EXES)
+	@echo C_LINK_FLAGS=$(C_LINK_FLAGS)
 
 %.8: %.go
 	@echo Go Compiling $<
@@ -74,6 +87,6 @@ clean: FORCE
 	@$(RM) -vf cscope.po.out
 
 nuke: clean
-	@$(RM) -vf $(C_TARGETS)
+	@$(RM) -vf $(C_TARGET_EXES)
 
 sinclude $(C_DFILES)
