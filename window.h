@@ -9,5 +9,6 @@ extern void windowMainLoop(void);
 extern unsigned char* windowGetVideoMemoryBGRA(const unsigned int window);
 
 int windowCheckKey(const int key);
+void windowClearKey(const int key);
 
 #endif /* #ifndef WINDOW_HH */
