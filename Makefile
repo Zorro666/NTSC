@@ -1,7 +1,7 @@
 C_CPP_COMMON_COMPILE_FLAGS:= -O3 -g -Wall -Wextra -Wuninitialized -Winit-self -Wstrict-aliasing -Wfloat-equal -Wshadow -Wconversion -Werror -fpack-struct=4
 
 C_COMPILE:=gcc -c
-C_COMPILE_FLAGS:=-ansi -pedantic-errors
+C_COMPILE_FLAGS:=-pedantic-errors
 
 C_LIBS=./libglfw3.a
 C_LINK:=g++
