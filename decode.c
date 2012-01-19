@@ -110,12 +110,24 @@ int loadNTSCData(const char* const fileName, unsigned char** pNtscDataPtr, unsig
 	return 0;
 }
 
+char* ntscFilenames[] = {
+	"2field-LLPPPP-110001.ntsc",
+	"lenna.ntsc",
+	"indian_head.ntsc",
+	"flightsim.ntsc",
+	"penelope.ntsc",
+	"smpte.ntsc",
+	NULL
+	};
+
 int main(int argc, char* argv[])
 {
 	int i;
 	int displayMode = DISPLAY_Y;
 	unsigned char* ntscDataPtr = NULL;
 	unsigned int ntscDataSize = 0;
+	unsigned int ntscFilenameIndex = 0;
+	const char* ntscFilename = NULL;
 	float yLPF_a[3];
 	float yLPF_b[2];
 
@@ -124,15 +136,16 @@ int main(int argc, char* argv[])
 		printf("argv[%d] '%s'\n", i, argv[i]);
 	}
 
-	if (loadNTSCData("2field-LLPPPP-110001.ntsc", &ntscDataPtr, &ntscDataSize))
+	ntscFilename = ntscFilenames[ntscFilenameIndex];
+	if (loadNTSCData(ntscFilename, &ntscDataPtr, &ntscDataSize))
 	{
-		fprintf(stderr, "ERROR loading NTSC data\n");
+		fprintf(stderr, "ERROR loading NTSC data '%s'\n", ntscFilename);
 		return -1;
 	}
 
 	windowSetup(MAIN_WINDOW, MAIN_WIDTH, MAIN_HEIGHT);
 
-	computeLowPassCoeffs(yLPF_a, yLPF_b, 1.0f*1000.0f*1000.0f, NTSC_SAMPLE_RATE);
+	computeLowPassCoeffs(yLPF_a, yLPF_b, 6.0f*1000.0f*1000.0f, NTSC_SAMPLE_RATE);
 	printf("yLPF coeffs\n");
 	printf("a[0]:%f a[1]:%f a[2]:%f b[0]:%f b[1]:%f\n", yLPF_a[0], yLPF_a[1], yLPF_a[2], yLPF_b[0], yLPF_b[1]);
 
@@ -223,13 +236,30 @@ int main(int argc, char* argv[])
 		/* 0x44 = d */
 		if (windowCheckKey(0x44))
 		{
+			windowClearKey(0x44);
 			displayMode++;
 			if (displayMode > DISPLAY_MAX)
 			{
 				displayMode = 0;
 			}
 			printf("displayMode:%d\n", displayMode);
-			windowClearKey(0x44);
+		}
+		/* 0x50 = p */
+		if (windowCheckKey(0x50))
+		{
+			windowClearKey(0x50);
+			ntscFilenameIndex++;
+			ntscFilename = ntscFilenames[ntscFilenameIndex];
+			if (ntscFilename == NULL)
+			{
+				ntscFilenameIndex = 0;
+				ntscFilename = ntscFilenames[ntscFilenameIndex];
+			}
+			if (loadNTSCData(ntscFilename, &ntscDataPtr, &ntscDataSize))
+			{
+				fprintf(stderr, "ERROR loading NTSC data '%s'\n", ntscFilename);
+				return -1;
+			}
 		}
 	}
 	return -1;
