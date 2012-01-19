@@ -1,0 +1,20 @@
+High
+* Test Y on real signal data
+* Add HSYNC detection - print num samples per line for each row
+* Verify LPF to get Y signal
+* Make RGB output
+
+Medium
+* Add VSYNC detection
+* LPF to get IQ signal
+* demodulate IQ signal -> I, Q
+
+Low
+* Debug options: zoom, pan
+* Debug options: Y, I, Q views
+* Debug options: single frame, frame step
+* Debug options: interlace on/off
+* Debug options: graph window: h-sync, v-sync,  h-lines, signal, Y, I, Q, R, G, B
+
+Future
+* Tint, brightness
