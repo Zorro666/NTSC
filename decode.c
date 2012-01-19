@@ -15,20 +15,66 @@
 #define NTSC_LINES_PER_FIELD (262)
 #define NTSC_FIELDS_PER_IMAGE (2)
 
+#define	NTSC_Y_LPF_CUTOFF (3.0f*1000.0f*1000.0f)
+
 const unsigned int MAIN_WINDOW = 0;
 
 const unsigned int MAIN_WIDTH = NTSC_SAMPLES_PER_LINE;
 const unsigned int MAIN_HEIGHT = NTSC_LINES_PER_FIELD*NTSC_FIELDS_PER_IMAGE;
 
 /*
-1. [gain, level] = normalize(input)
-2. input = input ∗ gain + level
-4. Y = LPF2(video)
-5. Sin = gen sin ( color burst(input))
-6. I = LPF3( (video − Y ) . ∗ Sin )
-7. Q = LPF3( (video − Y ) . ∗ Sin(2 :) )
-8. [R G B]ˆT = clip(M−1 ∗ [Y I Q]ˆT
+Y = LPF2(video)
+Sin = gen sin ( color burst(input))
+I = LPF3( (video − Y ) ∗ Sin )
+Q = LPF3( (video − Y ) ∗ Sin(2 :) )
 */
+
+#if 0
+Notch filter - be even better to use this instead of LPF - notch at the colour sub-carrier frequency
+
+Parameters:
+0 =< freq =< samplerate/2
+0 =< q < 1 (The higher, the narrower)
+
+AlgoAlgo=double pi = 3.141592654;
+double sqrt2 = sqrt(2.0);
+
+double freq = 2050; /* Change! (zero & pole angle) */
+double q = 0.4;     /* Change! (pole magnitude) */
+
+double z1x = cos(2*pi*freq/samplerate);
+double a0a2 = (1-q)*(1-q)/(2*(fabs(z1x)+1)) + q;
+double a1 = -2*z1x*a0a2;
+double b1 = -2*z1x*q;
+double b2 = q*q;
+double reg0, reg1, reg2;
+
+unsigned int streamofs;
+reg1 = 0;
+reg2 = 0;
+
+/* Main loop */
+for (streamofs = 0; streamofs < streamsize; streamofs++)
+{
+  reg0 = a0a2 * ((double)fromstream[streamofs]
+                 + fromstream[streamofs+2])
+       + a1 * fromstream[streamofs+1]
+       - b1 * reg1
+       - b2 * reg2;
+
+  reg2 = reg1;
+  reg1 = reg0;
+
+  int temp = reg0;
+
+  /* Check clipping */
+  if (temp > 32767) {
+    temp = 32767;
+  } else if (temp < -32768) temp = -32768;
+
+  /* Store new value */
+  tostream[streamofs] = temp;
+#endif
 
 /*
 r  = rez amount, from sqrt(2) to ~ 0.1
@@ -145,7 +191,7 @@ int main(int argc, char* argv[])
 
 	windowSetup(MAIN_WINDOW, MAIN_WIDTH, MAIN_HEIGHT);
 
-	computeLowPassCoeffs(yLPF_a, yLPF_b, 6.0f*1000.0f*1000.0f, NTSC_SAMPLE_RATE);
+	computeLowPassCoeffs(yLPF_a, yLPF_b, NTSC_Y_LPF_CUTOFF, NTSC_SAMPLE_RATE);
 	printf("yLPF coeffs\n");
 	printf("a[0]:%f a[1]:%f a[2]:%f b[0]:%f b[1]:%f\n", yLPF_a[0], yLPF_a[1], yLPF_a[2], yLPF_b[0], yLPF_b[1]);
 
