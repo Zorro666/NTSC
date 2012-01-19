@@ -4,10 +4,21 @@
 
 #include "window.h"
 
+#define DISPLAY_Y (0)
+#define DISPLAY_SIGNAL (1)
+#define DISPLAY_TEST (2)
+#define DISPLAY_MAX (2)
+
+#define NTSC_COLOUR_CARRIER (3579545.0f)
+#define NTSC_SAMPLE_RATE (NTSC_COLOUR_CARRIER*4.0f)
+#define NTSC_SAMPLES_PER_LINE (910)
+#define NTSC_LINES_PER_FIELD (262)
+#define NTSC_FIELDS_PER_IMAGE (2)
+
 const unsigned int MAIN_WINDOW = 0;
 
-const unsigned int MAIN_WIDTH = 910;
-const unsigned int MAIN_HEIGHT = 262*2;
+const unsigned int MAIN_WIDTH = NTSC_SAMPLES_PER_LINE;
+const unsigned int MAIN_HEIGHT = NTSC_LINES_PER_FIELD*NTSC_FIELDS_PER_IMAGE;
 
 /*
 1. [gain, level] = normalize(input)
@@ -46,8 +57,6 @@ Hipass:
       b2 = ( 1.0 - r * c + c * c) * a1;
 */
 
-/* pSamples = input[n-2] */
-/* pOutput = output[n-2] */
 void computeLowPassCoeffs(float a[3], float b[2], const float freq, const float sample_rate)
 {
 	const float r = 1.0f;
@@ -60,6 +69,7 @@ void computeLowPassCoeffs(float a[3], float b[2], const float freq, const float 
 	b[1] = (1.0f - r*c + c*c) * a[0];
 }
 
+/* pSamples = input[n-2], pOutput = output[n-2] */
 void lowPass( const float a[3], const float b[2], const float* const pSamples, float* const pOutput)
 {
 	/* out(n) = a1 * in + a2 * in(n-1) + a3 * in(n-2) - b1*out(n-1) - b2*out(n-2) */
@@ -103,9 +113,16 @@ int loadNTSCData(const char* const fileName, unsigned char** pNtscDataPtr, unsig
 int main(int argc, char* argv[])
 {
 	int i;
-	int displayMode = 0;
+	int displayMode = DISPLAY_Y;
 	unsigned char* ntscDataPtr = NULL;
 	unsigned int ntscDataSize = 0;
+	float yLPF_a[3];
+	float yLPF_b[2];
+
+	for (i = 0; i < argc; i++)
+	{
+		printf("argv[%d] '%s'\n", i, argv[i]);
+	}
 
 	if (loadNTSCData("2field-LLPPPP-110001.ntsc", &ntscDataPtr, &ntscDataSize))
 	{
@@ -115,10 +132,10 @@ int main(int argc, char* argv[])
 
 	windowSetup(MAIN_WINDOW, MAIN_WIDTH, MAIN_HEIGHT);
 
-	for (i = 0; i < argc; i++)
-	{
-		printf("argv[%d] '%s'\n", i, argv[i]);
-	}
+	computeLowPassCoeffs(yLPF_a, yLPF_b, 1.0f*1000.0f*1000.0f, NTSC_SAMPLE_RATE);
+	printf("yLPF coeffs\n");
+	printf("a[0]:%f a[1]:%f a[2]:%f b[0]:%f b[1]:%f\n", yLPF_a[0], yLPF_a[1], yLPF_a[2], yLPF_b[0], yLPF_b[1]);
+
 	while (1)
 	{
 		unsigned int x;
@@ -126,6 +143,15 @@ int main(int argc, char* argv[])
 		unsigned char* const texture = windowGetVideoMemoryBGRA(MAIN_WINDOW);
 		unsigned int sample;
 		unsigned int Y = 0;
+		float inSignal[3];
+		float outY[3];
+
+		for (i = 0; i < 3; i++)
+		{
+			inSignal[i] = 0.0f;
+			outY[i] = 0.0f;
+		}
+
 		sample = 0;
 		i = 0;
 		for (y = 0; y < MAIN_HEIGHT; y++)
@@ -137,25 +163,36 @@ int main(int argc, char* argv[])
 				unsigned char green = 0;
 				unsigned char blue = 0;
 				unsigned char alpha = 0xFF;
-				if (displayMode == 0)
+				if (displayMode == DISPLAY_SIGNAL)
 				{
 					red = sampleValue;
 					green = sampleValue;
 					blue = sampleValue;
 				}
-				else if (displayMode == 1)
+				else if (displayMode == DISPLAY_Y)
 				{
-				 	/* Y = sampleValue * (B-A) + y * B * A */
-					const unsigned int SCALE = 1000;
-					const unsigned int A = 990;
-					const unsigned int B = SCALE - A;
-				 	Y = (unsigned int)(sampleValue * B + Y * A);
-					Y /= SCALE;
+					/* Y = LPF(signal) : 6MHz low-pass */
+					/* pSamples = input[n-2], pOutput = output[n-2] */
+					inSignal[0] = inSignal[1];
+					inSignal[1] = inSignal[2];
+					inSignal[2] = sampleValue;
+					outY[0] = outY[1];
+					outY[1] = outY[2];
+					lowPass(yLPF_a, yLPF_b, inSignal, outY);
+					Y = (unsigned char)outY[2];
+					if (outY[2] < 0.0f)
+					{
+						Y = 0;
+					}
+					else if (outY[2] > 200.0f)
+					{
+						Y = 200;
+					}
 					red = (unsigned char)Y;
 					green = (unsigned char)Y;
 					blue = (unsigned char)Y;
 				}
-				else if (displayMode == 99)
+				else if (displayMode == DISPLAY_TEST)
 				{
 					red = (unsigned char)(((x+5) * (y-10) + 20) & 0xFF);
 					green = (unsigned char)(((x+10) * y + 50) & 0xFF);
@@ -187,7 +224,7 @@ int main(int argc, char* argv[])
 		if (windowCheckKey(0x44))
 		{
 			displayMode++;
-			if (displayMode > 5)
+			if (displayMode > DISPLAY_MAX)
 			{
 				displayMode = 0;
 			}
