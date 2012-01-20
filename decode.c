@@ -234,10 +234,10 @@ void ntscDecodeChromaSignalIQ(const unsigned char chromaSignal, unsigned char* o
 	sinColourCarrier = sinf(s_CHROMA_T);
 	cosColourCarrier = cosf(s_CHROMA_T);
 
-	value = (unsigned int)(chromaSignal * sinColourCarrier);
+	value = (unsigned int)((float)chromaSignal * sinColourCarrier);
 	I = (unsigned char)value;
 
-	value = (unsigned int)(chromaSignal * cosColourCarrier);
+	value = (unsigned int)((float)chromaSignal * cosColourCarrier);
 	Q = (unsigned char)value;
 
 	*outI = I;
@@ -342,9 +342,9 @@ int main(int argc, char* argv[])
 				}
 				else if (displayMode == DISPLAY_RGB)
 				{
-					red = (unsigned char)(Y + 0.9563f * I + 0.6210f * Q);
-					green = (unsigned char)(Y - 0.2721f * I - 0.6474f * Q);
-					blue = (unsigned char)(Y - 1.1070f * I + 1.7406f * Q);
+					red = (unsigned char)((float)Y + 0.9563f * (float)I + 0.6210f * (float)Q);
+					green = (unsigned char)((float)Y - 0.2721f * (float)I - 0.6474f * (float)Q);
+					blue = (unsigned char)((float)Y - 1.1070f * (float)I + 1.7406f * (float)Q);
 				}
 				else if (displayMode == DISPLAY_TEST)
 				{
