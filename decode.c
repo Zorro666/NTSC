@@ -4,10 +4,14 @@
 
 #include "window.h"
 
-#define DISPLAY_Y (0)
-#define DISPLAY_SIGNAL (1)
-#define DISPLAY_TEST (2)
-#define DISPLAY_MAX (2)
+#define DISPLAY_RGB 		(0)
+#define DISPLAY_Y 			(1)
+#define DISPLAY_CHROMA 	(2)
+#define DISPLAY_I 			(3)
+#define DISPLAY_Q 			(4)
+#define DISPLAY_SIGNAL 	(5)
+#define DISPLAY_TEST 		(6)
+#define DISPLAY_MAX 		(6)
 
 #define NTSC_COLOUR_CARRIER (3579545.0f)
 #define NTSC_SAMPLE_RATE (NTSC_COLOUR_CARRIER*4.0f)
@@ -21,6 +25,17 @@ const unsigned int MAIN_WINDOW = 0;
 
 const unsigned int MAIN_WIDTH = NTSC_SAMPLES_PER_LINE;
 const unsigned int MAIN_HEIGHT = NTSC_LINES_PER_FIELD*NTSC_FIELDS_PER_IMAGE;
+
+const char* const DISPLAY_MODES[] = {
+	"RGB",
+	"Y_SIGNAL",
+	"CHROMA_SIGNAL",
+	"I_SIGNAL",
+	"Q_SIGNAL",
+	"RAW SIGNAL",
+	"TEST PATTERN",
+	"INVALID"
+	};
 
 /*
 Y = LPF2(video)
@@ -105,7 +120,7 @@ Hipass:
 
 void computeLowPassCoeffs(float a[3], float b[2], const float freq, const float sample_rate)
 {
-	const float r = 1.0f;
+	const float r = 1.414f;
 	const float c = 1.0f / tanf((float)(M_PI * freq/sample_rate));
 
 	a[0] = 1.0f / (1.0f + r*c + c*c);
@@ -122,7 +137,7 @@ void lowPass( const float a[3], const float b[2], const float* const pSamples, f
 	pOutput[2] = a[0]*pSamples[2] + a[1]*pSamples[1] + a[2]*pSamples[0] - b[0]*pOutput[1] - b[1]*pOutput[0];
 }
 
-int loadNTSCData(const char* const fileName, unsigned char** pNtscDataPtr, unsigned int* pNtscDataSize)
+int ntscLoadData(const char* const fileName, unsigned char** pNtscDataPtr, unsigned int* pNtscDataSize)
 {
 	FILE* file;
 	size_t size;
@@ -156,16 +171,80 @@ int loadNTSCData(const char* const fileName, unsigned char** pNtscDataPtr, unsig
 	return 0;
 }
 
-char* ntscFilenames[] = {
-	"2field-LLPPPP-110001.ntsc",
-	"lenna.ntsc",
-	"indian_head.ntsc",
-	"flightsim.ntsc",
-	"penelope.ntsc",
-	"smpte.ntsc",
-	NULL
-	};
+static float s_LPFY_inSignal[3];
+static float s_LPFY_outY[3];
+static float s_LPFY_a[3];
+static float s_LPFY_b[2];
+static float s_CHROMA_T = 0.0f;
 
+void ntscDecodeInit(void)
+{
+	int i;
+	for (i = 0; i < 3; i++)
+	{
+		s_LPFY_inSignal[i] = 0.0f;
+		s_LPFY_outY[i] = 0.0f;
+	}
+	s_CHROMA_T = 0.0f;
+}
+
+void ntscDecodeCompositeSignalYC(const unsigned char compositeSignal, unsigned char* outY, unsigned char* outC)
+{
+	unsigned char Y = 0;
+	unsigned char C = 0;
+
+	/* Y = LPF(signal) : 6MHz low-pass */
+	s_LPFY_inSignal[0] = s_LPFY_inSignal[1];
+	s_LPFY_inSignal[1] = s_LPFY_inSignal[2];
+	s_LPFY_inSignal[2] = compositeSignal;
+	s_LPFY_outY[0] = s_LPFY_outY[1];
+	s_LPFY_outY[1] = s_LPFY_outY[2];
+	lowPass(s_LPFY_a, s_LPFY_b, s_LPFY_inSignal, s_LPFY_outY);
+	if (s_LPFY_outY[2] < 0.0f)
+	{
+		Y = 0;
+	}
+	else if (s_LPFY_outY[2] > 200.0f)
+	{
+		Y = 200;
+	}
+	else
+	{
+		Y = (unsigned char)s_LPFY_outY[2];
+	}
+
+	/* subtract to get chroma */
+	C = (unsigned char)(compositeSignal - Y);
+
+	*outY = Y;
+	*outC = C;
+}
+
+void ntscDecodeChromaSignalIQ(const unsigned char chromaSignal, unsigned char* outI, unsigned char* outQ)
+{
+	unsigned char I = 0;
+	unsigned char Q = 0;
+	unsigned int value = 0;
+	float sinColourCarrier;
+	float cosColourCarrier;
+
+	/* demodulate chroma to I, Q */
+	const float COLOUR_CARRIER_DELTA_T = (float)(2.0f * M_PI * NTSC_COLOUR_CARRIER / NTSC_SAMPLE_RATE);
+	s_CHROMA_T += COLOUR_CARRIER_DELTA_T;
+	sinColourCarrier = sinf(s_CHROMA_T);
+	cosColourCarrier = cosf(s_CHROMA_T);
+
+	value = (unsigned int)(chromaSignal * sinColourCarrier);
+	I = (unsigned char)value;
+
+	value = (unsigned int)(chromaSignal * cosColourCarrier);
+	Q = (unsigned char)value;
+
+	*outI = I;
+	*outQ = Q;
+}
+
+#define NTSC_COLOUR_CARRIER (3579545.0f)
 int main(int argc, char* argv[])
 {
 	int i;
@@ -174,8 +253,16 @@ int main(int argc, char* argv[])
 	unsigned int ntscDataSize = 0;
 	unsigned int ntscFilenameIndex = 0;
 	const char* ntscFilename = NULL;
-	float yLPF_a[3];
-	float yLPF_b[2];
+
+	char* ntscFilenames[] = {
+		"smpte.ntsc",
+		"lenna.ntsc",
+		"indian_head.ntsc",
+		"flightsim.ntsc",
+		"penelope.ntsc",
+		"2field-LLPPPP-110001.ntsc",
+		NULL
+	};
 
 	for (i = 0; i < argc; i++)
 	{
@@ -183,7 +270,7 @@ int main(int argc, char* argv[])
 	}
 
 	ntscFilename = ntscFilenames[ntscFilenameIndex];
-	if (loadNTSCData(ntscFilename, &ntscDataPtr, &ntscDataSize))
+	if (ntscLoadData(ntscFilename, &ntscDataPtr, &ntscDataSize))
 	{
 		fprintf(stderr, "ERROR loading NTSC data '%s'\n", ntscFilename);
 		return -1;
@@ -191,26 +278,19 @@ int main(int argc, char* argv[])
 
 	windowSetup(MAIN_WINDOW, MAIN_WIDTH, MAIN_HEIGHT);
 
-	computeLowPassCoeffs(yLPF_a, yLPF_b, NTSC_Y_LPF_CUTOFF, NTSC_SAMPLE_RATE);
-	printf("yLPF coeffs\n");
-	printf("a[0]:%f a[1]:%f a[2]:%f b[0]:%f b[1]:%f\n", yLPF_a[0], yLPF_a[1], yLPF_a[2], yLPF_b[0], yLPF_b[1]);
+	computeLowPassCoeffs(s_LPFY_a, s_LPFY_b, NTSC_Y_LPF_CUTOFF, NTSC_SAMPLE_RATE);
+	printf("LPFY coeffs\n");
+	printf("a[0]:%f a[1]:%f a[2]:%f b[0]:%f b[1]:%f\n", s_LPFY_a[0], s_LPFY_a[1], s_LPFY_a[2], s_LPFY_b[0], s_LPFY_b[1]);
 
+	printf("displayMode:'%s' (%d)\n", DISPLAY_MODES[displayMode], displayMode);
 	while (1)
 	{
 		unsigned int x;
 		unsigned int y;
 		unsigned char* const texture = windowGetVideoMemoryBGRA(MAIN_WINDOW);
 		unsigned int sample;
-		unsigned int Y = 0;
-		float inSignal[3];
-		float outY[3];
 
-		for (i = 0; i < 3; i++)
-		{
-			inSignal[i] = 0.0f;
-			outY[i] = 0.0f;
-		}
-
+		ntscDecodeInit();
 		sample = 0;
 		i = 0;
 		for (y = 0; y < MAIN_HEIGHT; y++)
@@ -222,6 +302,14 @@ int main(int argc, char* argv[])
 				unsigned char green = 0;
 				unsigned char blue = 0;
 				unsigned char alpha = 0xFF;
+
+				unsigned char Y = 0;
+				unsigned char C = 0;
+				unsigned char I = 0;
+				unsigned char Q = 0;
+				ntscDecodeCompositeSignalYC(sampleValue, &Y, &C);
+				ntscDecodeChromaSignalIQ(C, &I, &Q);
+
 				if (displayMode == DISPLAY_SIGNAL)
 				{
 					red = sampleValue;
@@ -230,26 +318,33 @@ int main(int argc, char* argv[])
 				}
 				else if (displayMode == DISPLAY_Y)
 				{
-					/* Y = LPF(signal) : 6MHz low-pass */
-					/* pSamples = input[n-2], pOutput = output[n-2] */
-					inSignal[0] = inSignal[1];
-					inSignal[1] = inSignal[2];
-					inSignal[2] = sampleValue;
-					outY[0] = outY[1];
-					outY[1] = outY[2];
-					lowPass(yLPF_a, yLPF_b, inSignal, outY);
-					Y = (unsigned char)outY[2];
-					if (outY[2] < 0.0f)
-					{
-						Y = 0;
-					}
-					else if (outY[2] > 200.0f)
-					{
-						Y = 200;
-					}
 					red = (unsigned char)Y;
 					green = (unsigned char)Y;
 					blue = (unsigned char)Y;
+				}
+				else if (displayMode == DISPLAY_CHROMA)
+				{
+					red = (unsigned char)C;
+					green = (unsigned char)C;
+					blue = (unsigned char)C;
+				}
+				else if (displayMode == DISPLAY_I)
+				{
+					red = (unsigned char)I;
+					green = (unsigned char)I;
+					blue = (unsigned char)I;
+				}
+				else if (displayMode == DISPLAY_Q)
+				{
+					red = (unsigned char)Q;
+					green = (unsigned char)Q;
+					blue = (unsigned char)Q;
+				}
+				else if (displayMode == DISPLAY_RGB)
+				{
+					red = (unsigned char)(Y + 0.9563f * I + 0.6210f * Q);
+					green = (unsigned char)(Y - 0.2721f * I - 0.6474f * Q);
+					blue = (unsigned char)(Y - 1.1070f * I + 1.7406f * Q);
 				}
 				else if (displayMode == DISPLAY_TEST)
 				{
@@ -279,21 +374,19 @@ int main(int argc, char* argv[])
 			windowClearKey(0x100);
 			break;
 		}
-		/* 0x44 = d */
-		if (windowCheckKey(0x44))
+		if (windowCheckKey('D'))
 		{
-			windowClearKey(0x44);
+			windowClearKey('D');
 			displayMode++;
 			if (displayMode > DISPLAY_MAX)
 			{
 				displayMode = 0;
 			}
-			printf("displayMode:%d\n", displayMode);
+			printf("displayMode:'%s' (%d)\n", DISPLAY_MODES[displayMode], displayMode);
 		}
-		/* 0x50 = p */
-		if (windowCheckKey(0x50))
+		if (windowCheckKey('P'))
 		{
-			windowClearKey(0x50);
+			windowClearKey('P');
 			ntscFilenameIndex++;
 			ntscFilename = ntscFilenames[ntscFilenameIndex];
 			if (ntscFilename == NULL)
@@ -301,11 +394,47 @@ int main(int argc, char* argv[])
 				ntscFilenameIndex = 0;
 				ntscFilename = ntscFilenames[ntscFilenameIndex];
 			}
-			if (loadNTSCData(ntscFilename, &ntscDataPtr, &ntscDataSize))
+			if (ntscLoadData(ntscFilename, &ntscDataPtr, &ntscDataSize))
 			{
 				fprintf(stderr, "ERROR loading NTSC data '%s'\n", ntscFilename);
 				return -1;
 			}
+		}
+		if (windowCheckKey('R'))
+		{
+			windowClearKey('R');
+			displayMode = DISPLAY_RGB;
+			printf("displayMode:'%s' (%d)\n", DISPLAY_MODES[displayMode], displayMode);
+		}
+		if (windowCheckKey('S'))
+		{
+			windowClearKey('S');
+			displayMode = DISPLAY_SIGNAL;
+			printf("displayMode:'%s' (%d)\n", DISPLAY_MODES[displayMode], displayMode);
+		}
+		if (windowCheckKey('Y'))
+		{
+			windowClearKey('Y');
+			displayMode = DISPLAY_Y;
+			printf("displayMode:'%s' (%d)\n", DISPLAY_MODES[displayMode], displayMode);
+		}
+		if (windowCheckKey('C'))
+		{
+			windowClearKey('C');
+			displayMode = DISPLAY_CHROMA;
+			printf("displayMode:'%s' (%d)\n", DISPLAY_MODES[displayMode], displayMode);
+		}
+		if (windowCheckKey('I'))
+		{
+			windowClearKey('I');
+			displayMode = DISPLAY_I;
+			printf("displayMode:'%s' (%d)\n", DISPLAY_MODES[displayMode], displayMode);
+		}
+		if (windowCheckKey('Q'))
+		{
+			windowClearKey('Q');
+			displayMode = DISPLAY_Q;
+			printf("displayMode:'%s' (%d)\n", DISPLAY_MODES[displayMode], displayMode);
 		}
 	}
 	return -1;
