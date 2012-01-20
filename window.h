@@ -6,7 +6,7 @@ extern int windowSetup(const unsigned int window, const unsigned int width, cons
 extern void windowUpdate(const unsigned int window, const unsigned int width, const unsigned int height);
 extern void windowMainLoop(void);
 
-extern unsigned char* windowGetVideoMemoryBGRA(const unsigned int window);
+extern unsigned int* windowGetVideoMemoryBGRA(const unsigned int window);
 
 int windowCheckKey(const int key);
 void windowClearKey(const int key);
