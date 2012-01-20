@@ -9,4 +9,8 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA);
 void ntscDecodeAddSample(const unsigned char sampleValue);
 void ntscDecodeTick(void);
 
+extern int windowCheckKey(const int key);
+extern void windowClearKey(const int key);
+
+
 #endif /* #ifndef NTSC_DECODE_HH */

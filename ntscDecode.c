@@ -4,9 +4,6 @@
 
 #include "ntscDecode.h"
 
-extern int windowCheckKey(const int key);
-extern void windowClearKey(const int key);
-
 #define DISPLAY_RGB 		(0)
 #define DISPLAY_Y 			(1)
 #define DISPLAY_CHROMA 	(2)
