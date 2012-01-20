@@ -19,7 +19,7 @@
 #define NTSC_LINES_PER_FIELD (262)
 #define NTSC_FIELDS_PER_IMAGE (2)
 
-#define	NTSC_Y_LPF_CUTOFF (3.0f*1000.0f*1000.0f)
+#define	NTSC_Y_LPF_CUTOFF (6.0f*1000.0f*1000.0f)
 
 const unsigned int MAIN_WINDOW = 0;
 
@@ -185,7 +185,7 @@ void ntscDecodeInit(void)
 		s_LPFY_inSignal[i] = 0.0f;
 		s_LPFY_outY[i] = 0.0f;
 	}
-	s_CHROMA_T = 0.0f;
+	s_CHROMA_T = 0.0f + (float)(2.0f * M_PI / 360.0f) * 33.0f;
 }
 
 void ntscDecodeCompositeSignalYC(const unsigned char compositeSignal, unsigned char* outY, unsigned char* outC)
@@ -216,7 +216,7 @@ void ntscDecodeCompositeSignalYC(const unsigned char compositeSignal, unsigned c
 	/* subtract to get chroma */
 	C = (unsigned char)(compositeSignal - Y);
 
-	*outY = Y;
+	*outY = (unsigned char)(Y - 60);
 	*outC = C;
 }
 
@@ -224,31 +224,49 @@ void ntscDecodeChromaSignalIQ(const unsigned char chromaSignal, unsigned char* o
 {
 	unsigned char I = 0;
 	unsigned char Q = 0;
-	unsigned int value = 0;
+	float sinValue = 0;
+	float cosValue = 0;
 	float sinColourCarrier;
 	float cosColourCarrier;
+	float chromaValue = (float)chromaSignal - 60.0f;
 
 	/* demodulate chroma to I, Q */
-	const float COLOUR_CARRIER_DELTA_T = (float)(2.0f * M_PI * NTSC_COLOUR_CARRIER / NTSC_SAMPLE_RATE);
-	s_CHROMA_T += COLOUR_CARRIER_DELTA_T;
+	const float COLOUR_CARRIER_DELTA_T = (float)(4.0f * M_PI * NTSC_COLOUR_CARRIER / NTSC_SAMPLE_RATE);
 	sinColourCarrier = sinf(s_CHROMA_T);
 	cosColourCarrier = cosf(s_CHROMA_T);
+	s_CHROMA_T += COLOUR_CARRIER_DELTA_T;
 
-	value = (unsigned int)((float)chromaSignal * sinColourCarrier);
-	I = (unsigned char)value;
+	sinValue = chromaValue * sinColourCarrier;
+	cosValue = chromaValue * cosColourCarrier;
 
-	value = (unsigned int)((float)chromaSignal * cosColourCarrier);
-	Q = (unsigned char)value;
+	if (sinValue < 0.0f)
+	{
+		sinValue = 0.0f;
+	}
+	if (sinValue > 200.0f)
+	{
+		sinValue = 200.0f;
+	}
+	if (cosValue < 0.0f)
+	{
+		cosValue = 0.0f;
+	}
+	if (cosValue > 200.0f)
+	{
+		cosValue = 200.0f;
+	}
+	I = (unsigned char)sinValue;
+	Q = (unsigned char)cosValue;
+
 
 	*outI = I;
 	*outQ = Q;
 }
 
-#define NTSC_COLOUR_CARRIER (3579545.0f)
 int main(int argc, char* argv[])
 {
 	int i;
-	int displayMode = DISPLAY_Y;
+	int displayMode = DISPLAY_RGB;
 	unsigned char* ntscDataPtr = NULL;
 	unsigned int ntscDataSize = 0;
 	unsigned int ntscFilenameIndex = 0;
@@ -290,11 +308,11 @@ int main(int argc, char* argv[])
 		unsigned char* const texture = windowGetVideoMemoryBGRA(MAIN_WINDOW);
 		unsigned int sample;
 
-		ntscDecodeInit();
 		sample = 0;
 		i = 0;
 		for (y = 0; y < MAIN_HEIGHT; y++)
 		{
+			ntscDecodeInit();
 			for (x = 0; x < MAIN_WIDTH; x++)
 			{
 				const unsigned char sampleValue = ntscDataPtr[sample];
