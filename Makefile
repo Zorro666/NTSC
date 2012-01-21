@@ -3,6 +3,9 @@ C_CPP_COMMON_COMPILE_FLAGS:= -O3 -g -Wall -Wextra -Wuninitialized -Winit-self -W
 C_COMPILE:=gcc -c
 C_COMPILE_FLAGS:=-pedantic-errors
 
+CPP_COMPILE:=gcc -c
+CPP_COMPILE_FLAGS:=
+
 C_LIBS=./libglfw3.a
 C_LINK:=g++
 C_LINK_FLAGS:=-g -lm -lpthread $(C_LIBS)
@@ -15,7 +18,8 @@ C_LINK_FLAGS += -lGL
 C_TARGET_EXTENSION := 
 endif	# ifdef WINDIR
 
-DECODE_DEPENDS:=window.c ntscDecode.c
+DECODE_C_DEPENDS:=window.c ntscDecode.c
+DECODE_CPP_DEPENDS:=ntscDecodeCrtsim.cpp
 C_PROJECTS:=decode
 
 all: $(C_PROJECTS)
@@ -25,22 +29,26 @@ $(shell echo $1 | tr [a-z] [A-Z] )
 endef
 
 define C_PROJECT_template
-$2_SRCFILES += $1.c
-$2_SRCFILES += $($2_DEPENDS)
-$2_DEPEND_OBJS:=$($2_DEPENDS:.c=.o)
-$2_DFILES:=$$($2_SRCFILES:.c=.d)
+$2_C_SRCFILES += $1.c
+$2_C_SRCFILES += $($2_C_DEPENDS)
+$2_CPP_SRCFILES:=$($2_CPP_DEPENDS)
+$2_C_DEPEND_OBJS:=$($2_C_DEPENDS:.c=.o)
+$2_CPP_DEPEND_OBJS:=$($2_CPP_DEPENDS:.cpp=.o)
+$2_C_DFILES:=$$($2_C_SRCFILES:.c=.d)
+$2_CPP_DFILES:=$$($2_CPP_SRCFILES:.cpp=.d)
 
 $2_OBJFILE:=$1.o
-$2_OBJFILES:=$$($2_SRCFILES:.c=.o)
+$2_C_OBJFILES:=$$($2_C_SRCFILES:.c=.o)
+$2_CPP_OBJFILES:=$$($2_CPP_SRCFILES:.cpp=.o)
 
-C_SRCFILES += $$($2_SRCFILES)
-C_OBJFILES += $$($2_OBJFILES)
-C_DFILES += $$($2_DFILES)
+C_SRCFILES += $$($2_C_SRCFILES) $$($2_CPP_SRCFILES)
+C_OBJFILES += $$($2_C_OBJFILES) $$($2_CPP_OBJFILES)
+C_DFILES += $$($2_C_DFILES) $$($2_CPP_DFILES)
 
 C_TARGETS += $1
 
-$$($2_OBJFILE): $$($2_DEPEND_OBJS) $1.c
-$1: $$($2_OBJFILES) 
+$$($2_OBJFILE): $$($2_C_DEPEND_OBJS) $$($2_CPP_DEPEND_OBJS) $1.c
+$1: $$($2_C_OBJFILES) $$($2_CPP_OBJFILES)
 endef
      
 $(foreach project,$(C_PROJECTS),$(eval $(call C_PROJECT_template,$(project),$(call upperString,$(project)))))
@@ -64,6 +72,10 @@ test:
 %: %.8
 	@echo Go Linking $<
 	@$(LD) -o $@ $<
+
+%.o: %.cpp
+	@echo C++ Compiling $<
+	@$(CPP_COMPILE) -MMD $(C_CPP_COMMON_COMPILE_FLAGS) $(CPP_COMPILE_FLAGS) -o $*.o $<
 
 %.o: %.c
 	@echo C Compiling $<
