@@ -3,6 +3,7 @@
 #include <math.h>
 
 #include "ntscDecode.h"
+#include "ntscDecodeCrtsim.h"
 
 #define DISPLAY_RGB 		(0)
 #define DISPLAY_Y 			(1)
@@ -11,6 +12,9 @@
 #define DISPLAY_Q 			(4)
 #define DISPLAY_SIGNAL 	(5)
 #define DISPLAY_MAX 		(5)
+
+#define DECODE_JAKE			(0)
+#define DECODE_CRTSIM		(1)
 
 #define NTSC_COLOUR_CARRIER (3579545.0f)
 #define NTSC_SAMPLE_RATE (NTSC_COLOUR_CARRIER*4.0f)
@@ -35,6 +39,7 @@ static float s_CHROMA_T = 0.0f;
 static int s_displayMode = DISPLAY_RGB;
 static unsigned int* s_pVideoMemoryBGRA = NULL;
 static int s_pixelPos = 0;
+static int s_decodeOption = DECODE_JAKE;
 
 /*
 Y = LPF2(video)
@@ -226,6 +231,9 @@ static void lineInit(void)
 /* Public API */
 void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 {
+	s_decodeOption = DECODE_JAKE;
+	s_decodeOption = DECODE_CRTSIM;
+
 	s_displayMode = DISPLAY_RGB;
 	s_pVideoMemoryBGRA = pVideoMemoryBGRA;
 	s_pixelPos = 0;
@@ -235,6 +243,8 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 	printf("a[0]:%f a[1]:%f a[2]:%f b[0]:%f b[1]:%f\n", s_LPFY_a[0], s_LPFY_a[1], s_LPFY_a[2], s_LPFY_b[0], s_LPFY_b[1]);
 
 	printf("displayMode:'%s' (%d)\n", DISPLAY_MODES[s_displayMode], s_displayMode);
+
+	crtSimInit(pVideoMemoryBGRA);
 }
 
 void ntscDecodeAddSample(const unsigned char sampleValue)
@@ -253,67 +263,97 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 
 	unsigned char* texture = (unsigned char*)s_pVideoMemoryBGRA;
 
-	if (pixelPos%910 == 0)
+	if (s_decodeOption == DECODE_CRTSIM)
 	{
-		lineInit();
+		crtSimAddSample(sampleValue);
 	}
 
-	decodeCompositeSignalYC(sampleValue, &Y, &C);
-	decodeChromaSignalIQ(C, &I, &Q);
+	if (s_decodeOption == DECODE_JAKE)
+	{
+		if (pixelPos%910 == 0)
+		{
+			lineInit();
+		}
 
-	if (displayMode == DISPLAY_SIGNAL)
-	{
-		red = sampleValue;
-		green = sampleValue;
-		blue = sampleValue;
+
+		decodeCompositeSignalYC(sampleValue, &Y, &C);
+		decodeChromaSignalIQ(C, &I, &Q);
+
+		if (displayMode == DISPLAY_SIGNAL)
+		{
+			red = sampleValue;
+			green = sampleValue;
+			blue = sampleValue;
+		}
+		else if (displayMode == DISPLAY_Y)
+		{
+			red = (unsigned char)Y;
+			green = (unsigned char)Y;
+			blue = (unsigned char)Y;
+		}
+		else if (displayMode == DISPLAY_CHROMA)
+		{
+			red = (unsigned char)C;
+			green = (unsigned char)C;
+			blue = (unsigned char)C;
+		}
+		else if (displayMode == DISPLAY_I)
+		{
+			red = (unsigned char)I;
+			green = (unsigned char)I;
+			blue = (unsigned char)I;
+		}
+		else if (displayMode == DISPLAY_Q)
+		{
+			red = (unsigned char)Q;
+			green = (unsigned char)Q;
+			blue = (unsigned char)Q;
+		}
+		else if (displayMode == DISPLAY_RGB)
+		{
+			red = (unsigned char)((float)Y + 0.9563f * (float)I + 0.6210f * (float)Q);
+			green = (unsigned char)((float)Y - 0.2721f * (float)I - 0.6474f * (float)Q);
+			blue = (unsigned char)((float)Y - 1.1070f * (float)I + 1.7406f * (float)Q);
+		}
+		/* BGRA format */
+		texture[pixelPos*4+0] = blue;
+		texture[pixelPos*4+1] = green;
+		texture[pixelPos*4+2] = red;
+		texture[pixelPos*4+3] = alpha;
+		pixelPos++;
+		if (pixelPos >= NTSC_SAMPLES_PER_LINE * NTSC_LINES_PER_FIELD * NTSC_FIELDS_PER_IMAGE)
+		{
+			pixelPos = 0;
+		}
+		s_pixelPos = pixelPos;
 	}
-	else if (displayMode == DISPLAY_Y)
-	{
-		red = (unsigned char)Y;
-		green = (unsigned char)Y;
-		blue = (unsigned char)Y;
-	}
-	else if (displayMode == DISPLAY_CHROMA)
-	{
-		red = (unsigned char)C;
-		green = (unsigned char)C;
-		blue = (unsigned char)C;
-	}
-	else if (displayMode == DISPLAY_I)
-	{
-		red = (unsigned char)I;
-		green = (unsigned char)I;
-		blue = (unsigned char)I;
-	}
-	else if (displayMode == DISPLAY_Q)
-	{
-		red = (unsigned char)Q;
-		green = (unsigned char)Q;
-		blue = (unsigned char)Q;
-	}
-	else if (displayMode == DISPLAY_RGB)
-	{
-		red = (unsigned char)((float)Y + 0.9563f * (float)I + 0.6210f * (float)Q);
-		green = (unsigned char)((float)Y - 0.2721f * (float)I - 0.6474f * (float)Q);
-		blue = (unsigned char)((float)Y - 1.1070f * (float)I + 1.7406f * (float)Q);
-	}
-	/* BGRA format */
-	texture[pixelPos*4+0] = blue;
-	texture[pixelPos*4+1] = green;
-	texture[pixelPos*4+2] = red;
-	texture[pixelPos*4+3] = alpha;
-	pixelPos++;
-	if (pixelPos >= NTSC_SAMPLES_PER_LINE * NTSC_LINES_PER_FIELD * NTSC_FIELDS_PER_IMAGE)
-	{
-		pixelPos = 0;
-	}
-	s_pixelPos = pixelPos;
 }
 
 void ntscDecodeTick(void)
 {
 	int displayMode = s_displayMode;
 	const int oldDisplayMode = displayMode;
+
+	if (s_decodeOption == DECODE_CRTSIM)
+	{
+		crtSimTick();
+	}
+
+	if (windowCheckKey('C'))
+	{
+		windowClearKey('C');
+		s_decodeOption = DECODE_CRTSIM;
+	}
+	if (windowCheckKey('J'))
+	{
+		windowClearKey('J');
+		s_decodeOption = DECODE_JAKE;
+	}
+	if (windowCheckKey('0'))
+	{
+		windowClearKey('0');
+		memset(s_pVideoMemoryBGRA, 0, 4* NTSC_SAMPLES_PER_LINE * NTSC_LINES_PER_FIELD * NTSC_FIELDS_PER_IMAGE);
+	}
 
 	if (windowCheckKey('D'))
 	{
