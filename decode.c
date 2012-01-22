@@ -7,7 +7,7 @@
 const unsigned int MAIN_WINDOW = 0;
 
 const unsigned int MAIN_WIDTH = NTSC_SAMPLES_PER_LINE;
-const unsigned int MAIN_HEIGHT = NTSC_LINES_PER_FIELD*NTSC_FIELDS_PER_IMAGE;
+const unsigned int MAIN_HEIGHT = NTSC_LINES_PER_FRAME;
 
 int loadData(const char* const fileName, unsigned char** pNtscDataPtr, unsigned int* pNtscDataSize)
 {
