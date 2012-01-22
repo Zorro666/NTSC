@@ -11,7 +11,7 @@
 #define NTSC_COLOUR_CARRIER (3579545.0f)
 #define NTSC_SAMPLE_RATE (NTSC_COLOUR_CARRIER*4.0f)
 
-#define	NTSC_Y_LPF_CUTOFF (2.0f*1000.0f*1000.0f)
+#define	NTSC_Y_LPF_CUTOFF (3.0f*1000.0f*1000.0f)
 
 const char* const DISPLAY_MODES[] = {
 	"RGB",
@@ -119,7 +119,7 @@ Hipass:
 
 static void computeLowPassCoeffs(float a[3], float b[2], const float freq, const float sample_rate)
 {
-	const float r = 1.414f;
+	const float r = 1.000f;
 	const float c = 1.0f / tanf((float)(M_PI * freq/sample_rate));
 
 	a[0] = 1.0f / (1.0f + r*c + c*c);
@@ -136,75 +136,49 @@ static void lowPass( const float a[3], const float b[2], const float* const pSam
 	pOutput[2] = a[0]*pSamples[2] + a[1]*pSamples[1] + a[2]*pSamples[0] - b[0]*pOutput[1] - b[1]*pOutput[0];
 }
 
-static void decodeCompositeSignalYC(const unsigned char compositeSignal, unsigned char* outY, unsigned char* outC)
+static void decodeCompositeSignalYC(const int compositeSignal, int* outY, int* outC)
 {
-	unsigned char Y = 0;
-	unsigned char C = 0;
+	int Y = 0;
+	int C = 0;
 
 	/* Y = LPF(signal) : 6MHz low-pass */
 	s_LPFY_inSignal[0] = s_LPFY_inSignal[1];
 	s_LPFY_inSignal[1] = s_LPFY_inSignal[2];
-	s_LPFY_inSignal[2] = compositeSignal;
+	s_LPFY_inSignal[2] = (float)compositeSignal;
 	s_LPFY_outY[0] = s_LPFY_outY[1];
 	s_LPFY_outY[1] = s_LPFY_outY[2];
+	/* inSignal = n-2, n-1, n, outY = n-2, n-1, n */
 	lowPass(s_LPFY_a, s_LPFY_b, s_LPFY_inSignal, s_LPFY_outY);
-	if (s_LPFY_outY[2] < 0.0f)
-	{
-		Y = 0;
-	}
-	else if (s_LPFY_outY[2] > 200.0f)
-	{
-		Y = 200;
-	}
-	else
-	{
-		Y = (unsigned char)s_LPFY_outY[2];
-	}
+	Y = clampInt(0, (int)s_LPFY_outY[2], 255);
 
 	/* subtract to get chroma */
-	C = (unsigned char)(compositeSignal - Y);
+	C = (compositeSignal - Y);
 
-	*outY = (unsigned char)(Y - 60);
+	*outY = Y;
 	*outC = C;
 }
 
-static void decodeChromaSignalIQ(const unsigned char chromaSignal, unsigned char* outI, unsigned char* outQ)
+static void decodeChromaSignalIQ(const int chromaSignal, int* outI, int* outQ)
 {
-	unsigned char I = 0;
-	unsigned char Q = 0;
+	int I = 0;
+	int Q = 0;
 	float sinValue = 0;
 	float cosValue = 0;
 	float sinColourCarrier;
 	float cosColourCarrier;
-	float chromaValue = (float)chromaSignal - 60.0f;
+	float chromaValue = (float)chromaSignal;
 
 	/* demodulate chroma to I, Q */
 	const float COLOUR_CARRIER_DELTA_T = (float)(2.0f * M_PI * NTSC_COLOUR_CARRIER / NTSC_SAMPLE_RATE);
-	sinColourCarrier = 2.0f * sinf(s_CHROMA_T+(float)(33.0f*M_PI/180.0f));
-	cosColourCarrier = 2.0f * cosf(s_CHROMA_T+(float)(33.0f*M_PI/180.0f));
+	sinColourCarrier = 2.0f * sinf(s_CHROMA_T);
+	cosColourCarrier = 2.0f * cosf(s_CHROMA_T);
 	s_CHROMA_T += COLOUR_CARRIER_DELTA_T;
 
 	sinValue = chromaValue * sinColourCarrier;
 	cosValue = chromaValue * cosColourCarrier;
 
-	if (sinValue < 0.0f)
-	{
-		sinValue = 0.0f;
-	}
-	if (sinValue > 200.0f)
-	{
-		sinValue = 200.0f;
-	}
-	if (cosValue < 0.0f)
-	{
-		cosValue = 0.0f;
-	}
-	if (cosValue > 200.0f)
-	{
-		cosValue = 200.0f;
-	}
-	I = (unsigned char)sinValue;
-	Q = (unsigned char)cosValue;
+	I = (int)sinValue;
+	Q = (int)cosValue;
 
 	*outI = I;
 	*outQ = Q;
@@ -218,7 +192,7 @@ static void lineInit(void)
 		s_LPFY_inSignal[i] = 0.0f;
 		s_LPFY_outY[i] = 0.0f;
 	}
-	s_CHROMA_T = 0.0f + (float)(2.0f * M_PI / 360.0f) * 33.0f;
+	s_CHROMA_T = 0.0f + (float)(2.0f * M_PI / 360.0f) * 103.0f;
 }
 
 
@@ -243,20 +217,6 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 
 void ntscDecodeAddSample(const unsigned char sampleValue)
 {
-	int pixelPos = s_pixelPos;
-	int displayMode = s_displayMode;
-	unsigned char red = 0;
-	unsigned char green = 0;
-	unsigned char blue = 0;
-	unsigned char alpha = 0xFF;
-
-	unsigned char Y = 0;
-	unsigned char C = 0;
-	unsigned char I = 0;
-	unsigned char Q = 0;
-
-	unsigned int* texture = s_pVideoMemoryBGRA;
-
 	if (s_decodeOption == DECODE_CRTSIM)
 	{
 		crtSimAddSample(sampleValue);
@@ -264,69 +224,91 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 
 	if (s_decodeOption == DECODE_JAKE)
 	{
+		int pixelPos = s_pixelPos;
+		int displayMode = s_displayMode;
+		int compositeSignal;
+
+		int Y;
+		int C;
+		int I;
+		int Q;
+		int R;
+		int G;
+		int B;
+
+		unsigned int red = 0;
+		unsigned int green = 0;
+		unsigned int blue = 0;
+		unsigned int alpha = 0xFF;
+
+		unsigned int* texture = s_pVideoMemoryBGRA;
+
 		if (pixelPos%910 == 0)
 		{
 			lineInit();
 		}
 
-
-		decodeCompositeSignalYC(sampleValue, &Y, &C);
+		compositeSignal = sampleValue - 60;
+		decodeCompositeSignalYC(compositeSignal, &Y, &C);
 		decodeChromaSignalIQ(C, &I, &Q);
 
-		red = (unsigned char)((float)Y + 0.9563f * (float)I + 0.6210f * (float)Q);
-		green = (unsigned char)((float)Y - 0.2721f * (float)I - 0.6474f * (float)Q);
-		blue = (unsigned char)((float)Y - 1.1070f * (float)I + 1.7406f * (float)Q);
-		if (0)
+		R = (int)((float)Y + 0.9563f * (float)I + 0.6210f * (float)Q);
+		G = (int)((float)Y - 0.2721f * (float)I - 0.6474f * (float)Q);
+		B = (int)((float)Y - 1.1070f * (float)I + 1.7406f * (float)Q);
+		if (displayMode == DISPLAY_RGB)
 		{
-			red = (unsigned char)(((int)red * 255) / 200);
-			green = (unsigned char)(((int)green * 255) / 200);
-			blue = (unsigned char)(((int)blue * 255) / 200);
+			red = (unsigned int)R;
+			green = (unsigned int)G;
+			blue = (unsigned int)B;
 		}
-		if (displayMode == DISPLAY_SIGNAL)
+		if (displayMode == DISPLAY_RED)
 		{
-			red = sampleValue;
-			green = sampleValue;
-			blue = sampleValue;
-		}
-		else if (displayMode == DISPLAY_Y)
-		{
-			red = (unsigned char)Y;
-			green = (unsigned char)Y;
-			blue = (unsigned char)Y;
-		}
-		else if (displayMode == DISPLAY_CHROMA)
-		{
-			red = (unsigned char)C;
-			green = (unsigned char)C;
-			blue = (unsigned char)C;
-		}
-		else if (displayMode == DISPLAY_I)
-		{
-			red = (unsigned char)I;
-			green = (unsigned char)I;
-			blue = (unsigned char)I;
-		}
-		else if (displayMode == DISPLAY_Q)
-		{
-			red = (unsigned char)Q;
-			green = (unsigned char)Q;
-			blue = (unsigned char)Q;
-		}
-		else if (displayMode == DISPLAY_RED)
-		{
+			red = (unsigned int)R;
 			green = 0;
 			blue = 0;
 		}
 		else if (displayMode == DISPLAY_GREEN)
 		{
 			red = 0;
+			green = (unsigned int)G;
 			blue = 0;
 		}
 		else if (displayMode == DISPLAY_BLUE)
 		{
 			red = 0;
 			green = 0;
+			blue = (unsigned int)B;
 		}
+		else if (displayMode == DISPLAY_Y)
+		{
+			Y = clampInt(0, Y, 255<<0) >> 0;
+			red = (unsigned int)Y;
+			green = (unsigned int)Y;
+			blue = (unsigned int)Y;
+		}
+		else if (displayMode == DISPLAY_I)
+		{
+			I = 128+(clampInt(-128<<0, I, 128<<0) >> 1);
+			red = (unsigned int)I;
+			green = (unsigned int)I;
+			blue = (unsigned int)I;
+		}
+		else if (displayMode == DISPLAY_Q)
+		{
+			Q = 128+(clampInt(-128<<0, Q, 128<<0) >> 1);
+			red = (unsigned int)Q;
+			green = (unsigned int)Q;
+			blue = (unsigned int)Q;
+		}
+		else if (displayMode == DISPLAY_SIGNAL)
+		{
+			red = (unsigned int)sampleValue;
+			green = (unsigned int)sampleValue;
+			blue = (unsigned int)sampleValue;
+		}
+		red = (unsigned int)clampInt(0, (int)red, 255);
+		green = (unsigned int)clampInt(0, (int)green, 255);
+		blue = (unsigned int)clampInt(0, (int)blue, 255);
 		/* BGRA format */
 		texture[pixelPos] = (unsigned int)((alpha<<24) | (red<<16) | (green<<8) | blue);
 		pixelPos++;
