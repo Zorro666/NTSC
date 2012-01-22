@@ -23,5 +23,48 @@ void ntscDecodeTick(void);
 extern int windowCheckKey(const int key);
 extern void windowClearKey(const int key);
 
+extern inline float clampFloat(float low, float value, float high) 
+{ 
+	if (value < low)
+	{
+		return low;
+	}
+	else if (value > high)
+	{
+		return high;
+	}
+	return value;
+}
+
+extern inline int minInt(int a, int b)
+{
+	if (a < b)
+	{
+		return a;
+	}
+	return b;
+}
+
+extern inline int maxInt(int a, int b)
+{
+	if (a > b)
+	{
+		return a;
+	}
+	return b;
+}
+
+extern inline int clampInt(int low, int value, int high) 
+{ 
+	if (value < low)
+	{
+		return low;
+	}
+	else if (value > high)
+	{
+		return high;
+	}
+	return value;
+}
 
 #endif /* #ifndef NTSC_DECODE_HH */

@@ -35,52 +35,6 @@ static void consumerRead(const int amount)
 	}
 }
 
-static float minFloat(float a, float b)
-{
-	if (a < b)
-	{
-		return a;
-	}
-	return b;
-}
-
-static float maxFloat(float a, float b)
-{
-	if (a > b)
-	{
-		return a;
-	}
-	return b;
-}
-
-static float clampFloat(float low, float value, float high) 
-{ 
-	return minFloat(maxFloat(low, value), high); 
-}
-
-static int minInt(int a, int b)
-{
-	if (a < b)
-	{
-		return a;
-	}
-	return b;
-}
-
-static int maxInt(int a, int b)
-{
-	if (a > b)
-	{
-		return a;
-	}
-	return b;
-}
-
-static int clampInt(int low, int value, int high) 
-{ 
-	return minInt(maxInt(low, value), high); 
-}
-
 typedef struct DecodeNTSC
 {
     unsigned char* _dataData;
@@ -342,9 +296,9 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 				int R;
 				int G;
 				int B;
-				unsigned int red = 100;
-				unsigned int green = 100;
-				unsigned int blue = 100;
+				unsigned int red = 0;
+				unsigned int green = 0;
+				unsigned int blue = 0;
 				/* We use a low-pass Finite Impulse Response filter to */
 				/* remove high frequencies (including the color carrier */
 				/* frequency) from the signal. We could just keep a */
@@ -360,23 +314,29 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 				G = pDecodeNTSC->_gamma0[clampInt(0, (Y -  71*I - 164*Q)>>16, 255)];
 				B = pDecodeNTSC->_gamma0[clampInt(0, (Y - 283*I + 443*Q)>>16, 255)];
 
-				red = (unsigned int)R;
-				green = (unsigned int)G;
-				blue = (unsigned int)B;
+				if (displayMode == DISPLAY_RGB)
+				{
+					red = (unsigned int)R;
+					green = (unsigned int)G;
+					blue = (unsigned int)B;
+				}
 				if (displayMode == DISPLAY_RED)
 				{
+					red = (unsigned int)R;
 					green = 0;
 					blue = 0;
 				}
 				else if (displayMode == DISPLAY_GREEN)
 				{
 					red = 0;
+					green = (unsigned int)G;
 					blue = 0;
 				}
 				else if (displayMode == DISPLAY_BLUE)
 				{
 					red = 0;
 					green = 0;
+					blue = (unsigned int)B;
 				}
 				else if (displayMode == DISPLAY_Y)
 				{
