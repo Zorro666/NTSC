@@ -5,6 +5,14 @@
 #define NTSC_LINES_PER_FRAME (525)
 #define NTSC_LINES_PER_FIELD (262.5)
 
+#define DISPLAY_RGB 		(0)
+#define DISPLAY_Y 			(1)
+#define DISPLAY_CHROMA 	(2)
+#define DISPLAY_I 			(3)
+#define DISPLAY_Q 			(4)
+#define DISPLAY_SIGNAL 	(5)
+#define DISPLAY_MAX 		(5)
+
 void ntscDecodeInit(unsigned int* pVideoMemoryBGRA);
 void ntscDecodeAddSample(const unsigned char sampleValue);
 void ntscDecodeTick(void);

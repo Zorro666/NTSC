@@ -5,14 +5,6 @@
 #include "ntscDecode.h"
 #include "ntscDecodeCrtsim.h"
 
-#define DISPLAY_RGB 		(0)
-#define DISPLAY_Y 			(1)
-#define DISPLAY_CHROMA 	(2)
-#define DISPLAY_I 			(3)
-#define DISPLAY_Q 			(4)
-#define DISPLAY_SIGNAL 	(5)
-#define DISPLAY_MAX 		(5)
-
 #define DECODE_JAKE			(0)
 #define DECODE_CRTSIM		(1)
 
@@ -341,8 +333,8 @@ void ntscDecodeTick(void)
 
 	if (s_decodeOption == DECODE_CRTSIM)
 	{
-		crtSimTick();
-		crtSimTick();
+		crtSimTick(s_displayMode);
+		crtSimTick(s_displayMode);
 	}
 
 	if (windowCheckKey('C'))

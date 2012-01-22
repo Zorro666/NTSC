@@ -2,12 +2,12 @@
 #include <math.h>
 #include <memory.h>
 
+#include "ntscDecode.h"
+
 typedef unsigned char Sample;  /* Sync = 4, Blank = 60, Black = 70, White = 200 */
 
-#define NTSC_SAMPLES_PER_LINE (910)
-#define NTSC_LINES_PER_FIELD (525)
-#define SAMPLEDATA_MAX_SIZE (910*525)
-#define INTERNAL_TEXTURE_MAX_SIZE (NTSC_SAMPLES_PER_LINE*NTSC_LINES_PER_FIELD)
+#define SAMPLEDATA_MAX_SIZE (NTSC_SAMPLES_PER_LINE*NTSC_LINES_PER_FRAME)
+#define INTERNAL_TEXTURE_MAX_SIZE (NTSC_SAMPLES_PER_LINE*NTSC_LINES_PER_FRAME)
 
 static Sample s_sampleData[SAMPLEDATA_MAX_SIZE];
 
@@ -171,7 +171,7 @@ void decodeNTSCpostField(DecodeNTSC* const pDecodeNTSC)
 }
 
 /* Process a single scanline here */
-static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC)
+static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMode)
 {
 	/* Find the horizontal sync position. */
 	int offset = 0;
@@ -355,7 +355,10 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC)
 				R = pDecodeNTSC->_gamma0[clampInt(0, (Y + 243*I + 160*Q)>>16, 255)];
 				G = pDecodeNTSC->_gamma0[clampInt(0, (Y -  71*I - 164*Q)>>16, 255)];
 				B = pDecodeNTSC->_gamma0[clampInt(0, (Y - 283*I + 443*Q)>>16, 255)];
-				*(destination++) = (unsigned int)(0xff000000 | ((unsigned int)R<<16) | ((unsigned int)G<<8) | (unsigned int)B);
+				if (displayMode == DISPLAY_RGB)
+				{
+					*(destination++) = (unsigned int)(0xff000000 | ((unsigned int)R<<16) | ((unsigned int)G<<8) | (unsigned int)B);
+				}
 			}
 		}
 		else 
@@ -367,7 +370,10 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC)
 			{
 				int s = (int)(readerGetItem(sp++)) - 60;
 				int y = pDecodeNTSC->_gamma0[clampInt(0, (s*yContrast + brightness)>>16, 255)];
-				*(destination++) = 0xFF000000 | ((unsigned int)y<<16) | ((unsigned int)y<<8) | (unsigned int)y;
+				if (displayMode == DISPLAY_RGB)
+				{
+					*(destination++) = 0xFF000000 | ((unsigned int)y<<16) | ((unsigned int)y<<8) | (unsigned int)y;
+				}
 			}
 		}
 	}
@@ -480,7 +486,7 @@ static void decodeNTSCinit(DecodeNTSC* const pDecodeNTSC)
 
 static DecodeNTSC s_decodeNTSC;
 
-void jakecrtSimInit(unsigned int* pVideoMemoryBGRA)
+void crtSimInit(unsigned int* pVideoMemoryBGRA)
 {
 	decodeNTSCinit(&s_decodeNTSC);
 	s_decodeNTSC._dataPitch = sizeof(int) * NTSC_SAMPLES_PER_LINE * 2;
@@ -490,7 +496,7 @@ void jakecrtSimInit(unsigned int* pVideoMemoryBGRA)
 	s_sampleReadIndex = 0;
 }
 
-void jakecrtSimAddSample(const unsigned char sample)
+void crtSimAddSample(const unsigned char sample)
 {
 	s_sampleData[s_sampleAddIndex] = sample;
 	s_sampleAddIndex++;
@@ -500,11 +506,11 @@ void jakecrtSimAddSample(const unsigned char sample)
 	}
 }
 
-void jakecrtSimTick(void)
+void crtSimTick(const int displayMode)
 {
 	do
 	{	
-  	decodeNTSCprocess(&s_decodeNTSC);
+  	decodeNTSCprocess(&s_decodeNTSC, displayMode);
 	} while (s_decodeNTSC._line != 0 || s_decodeNTSC._foundVerticalSync);
 }
 

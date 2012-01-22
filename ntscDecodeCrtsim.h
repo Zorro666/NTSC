@@ -3,6 +3,6 @@
 
 void crtSimInit(unsigned int* pVideoMemoryBGRA);
 void crtSimAddSample(const unsigned char sampleValue);
-void crtSimTick(void);
+void crtSimTick(const int displayMode);
 
 #endif /* #ifndef NTSC_DECODE_CRTSIM_HH */
