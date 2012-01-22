@@ -19,7 +19,7 @@
 #define NTSC_COLOUR_CARRIER (3579545.0f)
 #define NTSC_SAMPLE_RATE (NTSC_COLOUR_CARRIER*4.0f)
 
-#define	NTSC_Y_LPF_CUTOFF (6.0f*1000.0f*1000.0f)
+#define	NTSC_Y_LPF_CUTOFF (2.0f*1000.0f*1000.0f)
 
 const char* const DISPLAY_MODES[] = {
 	"RGB",
@@ -184,9 +184,9 @@ static void decodeChromaSignalIQ(const unsigned char chromaSignal, unsigned char
 	float chromaValue = (float)chromaSignal - 60.0f;
 
 	/* demodulate chroma to I, Q */
-	const float COLOUR_CARRIER_DELTA_T = (float)(4.0f * M_PI * NTSC_COLOUR_CARRIER / NTSC_SAMPLE_RATE);
-	sinColourCarrier = sinf(s_CHROMA_T);
-	cosColourCarrier = cosf(s_CHROMA_T);
+	const float COLOUR_CARRIER_DELTA_T = (float)(2.0f * M_PI * NTSC_COLOUR_CARRIER / NTSC_SAMPLE_RATE);
+	sinColourCarrier = 2.0f * sinf(s_CHROMA_T+(float)(33.0f*M_PI/180.0f));
+	cosColourCarrier = 2.0f * cosf(s_CHROMA_T+(float)(33.0f*M_PI/180.0f));
 	s_CHROMA_T += COLOUR_CARRIER_DELTA_T;
 
 	sinValue = chromaValue * sinColourCarrier;
@@ -210,7 +210,6 @@ static void decodeChromaSignalIQ(const unsigned char chromaSignal, unsigned char
 	}
 	I = (unsigned char)sinValue;
 	Q = (unsigned char)cosValue;
-
 
 	*outI = I;
 	*outQ = Q;
@@ -314,6 +313,12 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			red = (unsigned char)((float)Y + 0.9563f * (float)I + 0.6210f * (float)Q);
 			green = (unsigned char)((float)Y - 0.2721f * (float)I - 0.6474f * (float)Q);
 			blue = (unsigned char)((float)Y - 1.1070f * (float)I + 1.7406f * (float)Q);
+			if (0)
+			{
+				red = (unsigned char)(((int)red * 255) / 200);
+				green = (unsigned char)(((int)green * 255) / 200);
+				blue = (unsigned char)(((int)blue * 255) / 200);
+			}
 		}
 		/* BGRA format */
 		texture[pixelPos*4+0] = blue;
@@ -321,7 +326,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		texture[pixelPos*4+2] = red;
 		texture[pixelPos*4+3] = alpha;
 		pixelPos++;
-		if (pixelPos >= NTSC_SAMPLES_PER_LINE * NTSC_LINES_PER_FIELD * NTSC_FIELDS_PER_IMAGE)
+		if (pixelPos >= NTSC_SAMPLES_PER_LINE * NTSC_LINES_PER_FRAME)
 		{
 			pixelPos = 0;
 		}
@@ -336,6 +341,7 @@ void ntscDecodeTick(void)
 
 	if (s_decodeOption == DECODE_CRTSIM)
 	{
+		crtSimTick();
 		crtSimTick();
 	}
 
@@ -352,7 +358,7 @@ void ntscDecodeTick(void)
 	if (windowCheckKey('0'))
 	{
 		windowClearKey('0');
-		memset(s_pVideoMemoryBGRA, 0, 4* NTSC_SAMPLES_PER_LINE * NTSC_LINES_PER_FIELD * NTSC_FIELDS_PER_IMAGE);
+		memset(s_pVideoMemoryBGRA, 0, 4 * NTSC_SAMPLES_PER_LINE * NTSC_LINES_PER_FRAME);
 	}
 
 	if (windowCheckKey('D'))
