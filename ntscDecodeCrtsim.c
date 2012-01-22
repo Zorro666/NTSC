@@ -163,6 +163,7 @@ void decodeNTSCpostField(DecodeNTSC* const pDecodeNTSC)
 				 float right = left + _widths[y]/static_cast<float>(_maxSamplesPerLine);
 				 */
 		}
+		memset(s_internalTexture+y*NTSC_SAMPLES_PER_LINE*2, 0, NTSC_SAMPLES_PER_LINE*sizeof(int));
 	}
 	pDecodeNTSC->_line = 0;
 	pDecodeNTSC->_foundVerticalSync = 0;
@@ -341,6 +342,9 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 				int R;
 				int G;
 				int B;
+				unsigned int red = 100;
+				unsigned int green = 100;
+				unsigned int blue = 100;
 				/* We use a low-pass Finite Impulse Response filter to */
 				/* remove high frequencies (including the color carrier */
 				/* frequency) from the signal. We could just keep a */
@@ -355,10 +359,57 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 				R = pDecodeNTSC->_gamma0[clampInt(0, (Y + 243*I + 160*Q)>>16, 255)];
 				G = pDecodeNTSC->_gamma0[clampInt(0, (Y -  71*I - 164*Q)>>16, 255)];
 				B = pDecodeNTSC->_gamma0[clampInt(0, (Y - 283*I + 443*Q)>>16, 255)];
-				if (displayMode == DISPLAY_RGB)
+
+				red = (unsigned int)R;
+				green = (unsigned int)G;
+				blue = (unsigned int)B;
+				if (displayMode == DISPLAY_RED)
 				{
-					*(destination++) = (unsigned int)(0xff000000 | ((unsigned int)R<<16) | ((unsigned int)G<<8) | (unsigned int)B);
+					green = 0;
+					blue = 0;
 				}
+				else if (displayMode == DISPLAY_GREEN)
+				{
+					red = 0;
+					blue = 0;
+				}
+				else if (displayMode == DISPLAY_BLUE)
+				{
+					red = 0;
+					green = 0;
+				}
+				else if (displayMode == DISPLAY_Y)
+				{
+					Y = clampInt(0, Y, 255<<16) >> 16;
+					red = (unsigned int)Y;
+					green = (unsigned int)Y;
+					blue = (unsigned int)Y;
+				}
+				else if (displayMode == DISPLAY_I)
+				{
+					I = 128+(clampInt(-128<<8, I, 128<<8) >> 8);
+					red = (unsigned int)I;
+					green = (unsigned int)I;
+					blue = (unsigned int)I;
+				}
+				else if (displayMode == DISPLAY_Q)
+				{
+					Q = 128+(clampInt(-128<<8, Q, 128<<8) >> 8);
+					red = (unsigned int)Q;
+					green = (unsigned int)Q;
+					blue = (unsigned int)Q;
+				}
+				else if (displayMode == DISPLAY_SIGNAL)
+				{
+					int sampleValue = s + 60;
+					red = (unsigned int)sampleValue;
+					green = (unsigned int)sampleValue;
+					blue = (unsigned int)sampleValue;
+				}
+				red = (unsigned int)clampInt(0, (int)red, 255);
+				green = (unsigned int)clampInt(0, (int)green, 255);
+				blue = (unsigned int)clampInt(0, (int)blue, 255);
+				*(destination++) = (unsigned int)(0xff000000 | (red<<16) | (green<<8) | blue);
 			}
 		}
 		else 
@@ -366,14 +417,36 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 			int x;
 			int sp = offset + start;
 			int yContrast = (int)(pDecodeNTSC->_contrast*46816.0f);
+			unsigned int red = 0;
+			unsigned int green = 0;
+			unsigned int blue = 0;
 			for (x = start; x < end; ++x) 
 			{
 				int s = (int)(readerGetItem(sp++)) - 60;
 				int y = pDecodeNTSC->_gamma0[clampInt(0, (s*yContrast + brightness)>>16, 255)];
 				if (displayMode == DISPLAY_RGB)
 				{
-					*(destination++) = 0xFF000000 | ((unsigned int)y<<16) | ((unsigned int)y<<8) | (unsigned int)y;
+					red = (unsigned int)y;
+					green = (unsigned int)y;
+					blue = (unsigned int)y;
 				}
+				else if (displayMode == DISPLAY_Y)
+				{
+					red = (unsigned int)y;
+					green = (unsigned int)y;
+					blue = (unsigned int)y;
+				}
+				else if (displayMode == DISPLAY_SIGNAL)
+				{
+					int sampleValue = s + 60;
+					red = (unsigned int)sampleValue;
+					green = (unsigned int)sampleValue;
+					blue = (unsigned int)sampleValue;
+				}
+				red = (unsigned int)clampInt(0, (int)red, 255);
+				green = (unsigned int)clampInt(0, (int)green, 255);
+				blue = (unsigned int)clampInt(0, (int)blue, 255);
+				*(destination++) = (unsigned int)(0xff000000 | (red<<16) | (green<<8) | blue);
 			}
 		}
 	}
@@ -494,6 +567,7 @@ void crtSimInit(unsigned int* pVideoMemoryBGRA)
 	s_outputTexture = pVideoMemoryBGRA;
 	s_sampleAddIndex = 0;
 	s_sampleReadIndex = 0;
+	memset(s_internalTexture, 0, sizeof(int)*INTERNAL_TEXTURE_MAX_SIZE);
 }
 
 void crtSimAddSample(const unsigned char sample)

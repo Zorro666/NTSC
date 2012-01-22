@@ -20,6 +20,9 @@ const char* const DISPLAY_MODES[] = {
 	"I_SIGNAL",
 	"Q_SIGNAL",
 	"RAW SIGNAL",
+	"RED CHANNEL",
+	"GREEN CHANNEL",
+	"BLUE CHANNEL",
 	"INVALID"
 	};
 
@@ -252,7 +255,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 	unsigned char I = 0;
 	unsigned char Q = 0;
 
-	unsigned char* texture = (unsigned char*)s_pVideoMemoryBGRA;
+	unsigned int* texture = s_pVideoMemoryBGRA;
 
 	if (s_decodeOption == DECODE_CRTSIM)
 	{
@@ -270,6 +273,15 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		decodeCompositeSignalYC(sampleValue, &Y, &C);
 		decodeChromaSignalIQ(C, &I, &Q);
 
+		red = (unsigned char)((float)Y + 0.9563f * (float)I + 0.6210f * (float)Q);
+		green = (unsigned char)((float)Y - 0.2721f * (float)I - 0.6474f * (float)Q);
+		blue = (unsigned char)((float)Y - 1.1070f * (float)I + 1.7406f * (float)Q);
+		if (0)
+		{
+			red = (unsigned char)(((int)red * 255) / 200);
+			green = (unsigned char)(((int)green * 255) / 200);
+			blue = (unsigned char)(((int)blue * 255) / 200);
+		}
 		if (displayMode == DISPLAY_SIGNAL)
 		{
 			red = sampleValue;
@@ -300,23 +312,23 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			green = (unsigned char)Q;
 			blue = (unsigned char)Q;
 		}
-		else if (displayMode == DISPLAY_RGB)
+		else if (displayMode == DISPLAY_RED)
 		{
-			red = (unsigned char)((float)Y + 0.9563f * (float)I + 0.6210f * (float)Q);
-			green = (unsigned char)((float)Y - 0.2721f * (float)I - 0.6474f * (float)Q);
-			blue = (unsigned char)((float)Y - 1.1070f * (float)I + 1.7406f * (float)Q);
-			if (0)
-			{
-				red = (unsigned char)(((int)red * 255) / 200);
-				green = (unsigned char)(((int)green * 255) / 200);
-				blue = (unsigned char)(((int)blue * 255) / 200);
-			}
+			green = 0;
+			blue = 0;
+		}
+		else if (displayMode == DISPLAY_GREEN)
+		{
+			red = 0;
+			blue = 0;
+		}
+		else if (displayMode == DISPLAY_BLUE)
+		{
+			red = 0;
+			green = 0;
 		}
 		/* BGRA format */
-		texture[pixelPos*4+0] = blue;
-		texture[pixelPos*4+1] = green;
-		texture[pixelPos*4+2] = red;
-		texture[pixelPos*4+3] = alpha;
+		texture[pixelPos] = (unsigned int)((alpha<<24) | (red<<16) | (green<<8) | blue);
 		pixelPos++;
 		if (pixelPos >= NTSC_SAMPLES_PER_LINE * NTSC_LINES_PER_FRAME)
 		{
@@ -362,6 +374,21 @@ void ntscDecodeTick(void)
 	{
 		windowClearKey('R');
 		displayMode = DISPLAY_RGB;
+	}
+	if (windowCheckKey('1'))
+	{
+		windowClearKey('1');
+		displayMode = DISPLAY_RED;
+	}
+	if (windowCheckKey('2'))
+	{
+		windowClearKey('2');
+		displayMode = DISPLAY_GREEN;
+	}
+	if (windowCheckKey('3'))
+	{
+		windowClearKey('3');
+		displayMode = DISPLAY_BLUE;
 	}
 	if (windowCheckKey('S'))
 	{

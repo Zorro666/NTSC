@@ -11,7 +11,10 @@
 #define DISPLAY_I 			(3)
 #define DISPLAY_Q 			(4)
 #define DISPLAY_SIGNAL 	(5)
-#define DISPLAY_MAX 		(5)
+#define DISPLAY_RED 		(6)
+#define DISPLAY_GREEN 	(7)
+#define DISPLAY_BLUE 		(8)
+#define DISPLAY_MAX 		(8)
 
 void ntscDecodeInit(unsigned int* pVideoMemoryBGRA);
 void ntscDecodeAddSample(const unsigned char sampleValue);
