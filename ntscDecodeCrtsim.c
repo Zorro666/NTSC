@@ -290,6 +290,7 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 			for (x = start; x < end; ++x, --p) 
 			{
 				int s;
+				int C;
 				int Y;
 				int I;
 				int Q;
@@ -305,11 +306,16 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 				/* 4-sample running average but that leads to sharp edges in the resulting image. */
 				s = (int)(readerGetItem(sp++)) - 60;
 				p[0] = s;
-				Y = (p[6] + p[0] + ((p[5] + p[1])<<2) + 7*(p[4] + p[2]) + (p[3]<<3))*yContrast + brightness;
+				Y = (p[6] + p[0] + ((p[5] + p[1])<<2) + 7*(p[4] + p[2]) + (p[3]<<3));
+				C = s - (Y / 32 );
+				Y = Y*yContrast + brightness;
+
 				p[6] = s*iqMultipliers[x&3];
 				I = p[12] + p[6] + ((p[11] + p[7])<<2) + 7*(p[10] + p[8]) + (p[9]<<3);
+
 				p[12] = s*iqMultipliers[(x + 3)&3];
 				Q = p[18] + p[12] + ((p[17] + p[13])<<2) + 7*(p[16] + p[14]) + (p[15]<<3);
+
 				R = pDecodeNTSC->_gamma0[clampInt(0, (Y + 243*I + 160*Q)>>16, 255)];
 				G = pDecodeNTSC->_gamma0[clampInt(0, (Y -  71*I - 164*Q)>>16, 255)];
 				B = pDecodeNTSC->_gamma0[clampInt(0, (Y - 283*I + 443*Q)>>16, 255)];
@@ -344,6 +350,13 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 					red = (unsigned int)Y;
 					green = (unsigned int)Y;
 					blue = (unsigned int)Y;
+				}
+				else if (displayMode == DISPLAY_CHROMA)
+				{
+					C = 128+(clampInt(-128<<0, C, 128<<0) >> 1);
+					red = (unsigned int)C;
+					green = (unsigned int)C;
+					blue = (unsigned int)C;
 				}
 				else if (displayMode == DISPLAY_I)
 				{
