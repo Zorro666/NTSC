@@ -136,6 +136,8 @@ static void lowPass( const float a[3], const float b[2], const float* const pSam
 	pOutput[2] = a[0]*pSamples[2] + a[1]*pSamples[1] + a[2]*pSamples[0] - b[0]*pOutput[1] - b[1]*pOutput[0];
 }
 
+static int s_yLPF[7];
+
 static void decodeCompositeSignalYC(const int compositeSignal, int* outY, int* outC)
 {
 	int Y = 0;
@@ -149,7 +151,19 @@ static void decodeCompositeSignalYC(const int compositeSignal, int* outY, int* o
 	s_LPFY_outY[1] = s_LPFY_outY[2];
 	/* inSignal = n-2, n-1, n, outY = n-2, n-1, n */
 	lowPass(s_LPFY_a, s_LPFY_b, s_LPFY_inSignal, s_LPFY_outY);
-	Y = clampInt(0, (int)s_LPFY_outY[2], 255);
+	Y = (int)s_LPFY_outY[2];
+
+	s_yLPF[1] = s_yLPF[0];
+	s_yLPF[2] = s_yLPF[1];
+	s_yLPF[3] = s_yLPF[2];
+	s_yLPF[4] = s_yLPF[3];
+	s_yLPF[5] = s_yLPF[4];
+	s_yLPF[6] = s_yLPF[5];
+	s_yLPF[0] = compositeSignal;
+	Y = (s_yLPF[6] + s_yLPF[0] + ((s_yLPF[5] + s_yLPF[1])<<2) + 7*(s_yLPF[4] + s_yLPF[2]) + (s_yLPF[3]<<3));
+	Y = Y / 32;
+
+	Y = clampInt(0, Y, 255);
 
 	/* subtract to get chroma */
 	C = (compositeSignal - Y);
@@ -157,6 +171,9 @@ static void decodeCompositeSignalYC(const int compositeSignal, int* outY, int* o
 	*outY = Y;
 	*outC = C;
 }
+
+static int s_iLPF[7];
+static int s_qLPF[7];
 
 static void decodeChromaSignalIQ(const int chromaSignal, int* outI, int* outQ)
 {
@@ -170,15 +187,32 @@ static void decodeChromaSignalIQ(const int chromaSignal, int* outI, int* outQ)
 
 	/* demodulate chroma to I, Q */
 	const float COLOUR_CARRIER_DELTA_T = (float)(2.0f * M_PI * NTSC_COLOUR_CARRIER / NTSC_SAMPLE_RATE);
-	sinColourCarrier = 2.0f * sinf(s_CHROMA_T);
-	cosColourCarrier = 2.0f * cosf(s_CHROMA_T);
+	sinColourCarrier = sinf(s_CHROMA_T);
+	cosColourCarrier = cosf(s_CHROMA_T);
 	s_CHROMA_T += COLOUR_CARRIER_DELTA_T;
 
 	sinValue = chromaValue * sinColourCarrier;
 	cosValue = chromaValue * cosColourCarrier;
 
-	I = (int)sinValue;
-	Q = (int)cosValue;
+	s_iLPF[1] = s_iLPF[0];
+	s_iLPF[2] = s_iLPF[1];
+	s_iLPF[3] = s_iLPF[2];
+	s_iLPF[4] = s_iLPF[3];
+	s_iLPF[5] = s_iLPF[4];
+	s_iLPF[6] = s_iLPF[5];
+	s_iLPF[0] = (int)sinValue;
+	I = (s_iLPF[6] + s_iLPF[0] + ((s_iLPF[5] + s_iLPF[1])<<2) + 7*(s_iLPF[4] + s_iLPF[2]) + (s_iLPF[3]<<3));
+	I = I / 32;
+
+	s_qLPF[1] = s_qLPF[0];
+	s_qLPF[2] = s_qLPF[1];
+	s_qLPF[3] = s_qLPF[2];
+	s_qLPF[4] = s_qLPF[3];
+	s_qLPF[5] = s_qLPF[4];
+	s_qLPF[6] = s_qLPF[5];
+	s_qLPF[0] = (int)cosValue;
+	Q = (s_qLPF[6] + s_qLPF[0] + ((s_qLPF[5] + s_qLPF[1])<<2) + 7*(s_qLPF[4] + s_qLPF[2]) + (s_qLPF[3]<<3));
+	Q = Q / 32;
 
 	*outI = I;
 	*outQ = Q;
@@ -192,7 +226,7 @@ static void lineInit(void)
 		s_LPFY_inSignal[i] = 0.0f;
 		s_LPFY_outY[i] = 0.0f;
 	}
-	s_CHROMA_T = 0.0f + (float)(2.0f * M_PI / 360.0f) * 103.0f;
+	s_CHROMA_T = 0.0f + (float)(M_PI / 180.0f) * 33.0f;
 }
 
 
@@ -286,6 +320,13 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			green = (unsigned int)Y;
 			blue = (unsigned int)Y;
 		}
+		else if (displayMode == DISPLAY_CHROMA)
+		{
+			C = 128+(clampInt(-128<<0, C, 128<<0) >> 1);
+			red = (unsigned int)C;
+			green = (unsigned int)C;
+			blue = (unsigned int)C;
+		}
 		else if (displayMode == DISPLAY_I)
 		{
 			I = 128+(clampInt(-128<<0, I, 128<<0) >> 1);
@@ -331,15 +372,17 @@ void ntscDecodeTick(void)
 		crtSimTick(s_displayMode);
 	}
 
-	if (windowCheckKey('C'))
-	{
-		windowClearKey('C');
-		s_decodeOption = DECODE_CRTSIM;
-	}
 	if (windowCheckKey('J'))
 	{
 		windowClearKey('J');
-		s_decodeOption = DECODE_JAKE;
+		if (s_decodeOption == DECODE_JAKE)
+		{
+			s_decodeOption = DECODE_CRTSIM;
+		}
+		else
+		{
+			s_decodeOption = DECODE_JAKE;
+		}
 	}
 	if (windowCheckKey('0'))
 	{
