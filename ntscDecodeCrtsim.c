@@ -307,8 +307,8 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 				s = (int)(readerGetItem(sp++)) - 60;
 				p[0] = s;
 				Y = (p[6] + p[0] + ((p[5] + p[1])<<2) + 7*(p[4] + p[2]) + (p[3]<<3));
-				C = s - (Y / 32 );
 				Y = Y*yContrast + brightness;
+				C = (s<<16) - Y;
 
 				p[6] = s*iqMultipliers[x&3];
 				I = p[12] + p[6] + ((p[11] + p[7])<<2) + 7*(p[10] + p[8]) + (p[9]<<3);
@@ -353,7 +353,7 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 				}
 				else if (displayMode == DISPLAY_CHROMA)
 				{
-					C = 128+(clampInt(-128<<0, C, 128<<0) >> 1);
+					C = 128+(clampInt(-128<<16, C, 128<<16) >> 16);
 					red = (unsigned int)C;
 					green = (unsigned int)C;
 					blue = (unsigned int)C;
