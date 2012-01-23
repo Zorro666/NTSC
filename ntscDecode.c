@@ -138,10 +138,9 @@ static void lowPass( const float a[3], const float b[2], const float* const pSam
 
 static int s_yLPF[7];
 
-static void decodeCompositeSignalYC(const int compositeSignal, int* outY, int* outC)
+static void decodeSignalY(const int compositeSignal, int* outY)
 {
 	int Y = 0;
-	int C = 0;
 
 	/* Y = LPF(signal) : 6MHz low-pass */
 	s_LPFY_inSignal[0] = s_LPFY_inSignal[1];
@@ -153,29 +152,27 @@ static void decodeCompositeSignalYC(const int compositeSignal, int* outY, int* o
 	lowPass(s_LPFY_a, s_LPFY_b, s_LPFY_inSignal, s_LPFY_outY);
 	Y = (int)s_LPFY_outY[2];
 
-	s_yLPF[1] = s_yLPF[0];
-	s_yLPF[2] = s_yLPF[1];
-	s_yLPF[3] = s_yLPF[2];
-	s_yLPF[4] = s_yLPF[3];
-	s_yLPF[5] = s_yLPF[4];
 	s_yLPF[6] = s_yLPF[5];
+	s_yLPF[5] = s_yLPF[4];
+	s_yLPF[4] = s_yLPF[3];
+	s_yLPF[3] = s_yLPF[2];
+	s_yLPF[2] = s_yLPF[1];
+	s_yLPF[1] = s_yLPF[0];
 	s_yLPF[0] = compositeSignal;
 	Y = (s_yLPF[6] + s_yLPF[0] + ((s_yLPF[5] + s_yLPF[1])<<2) + 7*(s_yLPF[4] + s_yLPF[2]) + (s_yLPF[3]<<3));
 	Y = Y / 32;
 
 	Y = clampInt(0, Y, 255);
 
-	/* subtract to get chroma */
-	C = (compositeSignal - Y);
-
 	*outY = Y;
-	*outC = C;
 }
 
 static int s_iLPF[7];
 static int s_qLPF[7];
+static int s_jakeI = 0;
+static float s_jakeVals[4];
 
-static void decodeChromaSignalIQ(const int chromaSignal, int* outI, int* outQ)
+static void decodeSignalIQ(const int compositeSignal, int* outI, int* outQ)
 {
 	int I = 0;
 	int Q = 0;
@@ -183,41 +180,47 @@ static void decodeChromaSignalIQ(const int chromaSignal, int* outI, int* outQ)
 	float cosValue = 0;
 	float sinColourCarrier;
 	float cosColourCarrier;
-	float chromaValue = (float)chromaSignal;
+	float chromaValue = (float)compositeSignal;
 
 	/* demodulate chroma to I, Q */
 	const float COLOUR_CARRIER_DELTA_T = (float)(2.0f * M_PI * NTSC_COLOUR_CARRIER / NTSC_SAMPLE_RATE);
 	sinColourCarrier = sinf(s_CHROMA_T);
-	cosColourCarrier = cosf(s_CHROMA_T);
+	cosColourCarrier = -cosf(s_CHROMA_T);
 	s_CHROMA_T += COLOUR_CARRIER_DELTA_T;
+
+	/*
+	printf("sin:%f cos:%f jakeI:%d %f %f\n", sinColourCarrier, cosColourCarrier, s_jakeI, s_jakeVals[s_jakeI&3], s_jakeVals[(s_jakeI+3)&3]);
+	*/
+	sinColourCarrier = s_jakeVals[s_jakeI&3];
+	cosColourCarrier = s_jakeVals[(s_jakeI+3)&3];
+	s_jakeI++;
 
 	sinValue = chromaValue * sinColourCarrier;
 	cosValue = chromaValue * cosColourCarrier;
 
-	s_iLPF[1] = s_iLPF[0];
-	s_iLPF[2] = s_iLPF[1];
-	s_iLPF[3] = s_iLPF[2];
-	s_iLPF[4] = s_iLPF[3];
-	s_iLPF[5] = s_iLPF[4];
 	s_iLPF[6] = s_iLPF[5];
-	s_iLPF[0] = (int)sinValue;
+	s_iLPF[5] = s_iLPF[4];
+	s_iLPF[4] = s_iLPF[3];
+	s_iLPF[3] = s_iLPF[2];
+	s_iLPF[2] = s_iLPF[1];
+	s_iLPF[1] = s_iLPF[0];
+	s_iLPF[0] = (int)sinValue * 32;
 	I = (s_iLPF[6] + s_iLPF[0] + ((s_iLPF[5] + s_iLPF[1])<<2) + 7*(s_iLPF[4] + s_iLPF[2]) + (s_iLPF[3]<<3));
-	I = I / 32;
 
-	s_qLPF[1] = s_qLPF[0];
-	s_qLPF[2] = s_qLPF[1];
-	s_qLPF[3] = s_qLPF[2];
-	s_qLPF[4] = s_qLPF[3];
-	s_qLPF[5] = s_qLPF[4];
 	s_qLPF[6] = s_qLPF[5];
-	s_qLPF[0] = (int)cosValue;
+	s_qLPF[5] = s_qLPF[4];
+	s_qLPF[4] = s_qLPF[3];
+	s_qLPF[3] = s_qLPF[2];
+	s_qLPF[2] = s_qLPF[1];
+	s_qLPF[1] = s_qLPF[0];
+	s_qLPF[0] = (int)cosValue * 32;
 	Q = (s_qLPF[6] + s_qLPF[0] + ((s_qLPF[5] + s_qLPF[1])<<2) + 7*(s_qLPF[4] + s_qLPF[2]) + (s_qLPF[3]<<3));
-	Q = Q / 32;
 
 	*outI = I;
 	*outQ = Q;
 }
 
+static int s_lineOdd = 0;
 static void lineInit(void)
 {
 	int i;
@@ -226,7 +229,23 @@ static void lineInit(void)
 		s_LPFY_inSignal[i] = 0.0f;
 		s_LPFY_outY[i] = 0.0f;
 	}
-	s_CHROMA_T = 0.0f + (float)(M_PI / 180.0f) * 33.0f;
+	for (i = 0; i < 7; i++)
+	{
+		s_yLPF[i] = 0;
+		s_iLPF[i] = 0;
+		s_qLPF[i] = 0;
+	}
+	s_CHROMA_T = 0.0f;
+ 	s_CHROMA_T += (float)(M_PI / 180.0f) * 33.0f;
+	s_CHROMA_T = 0.0f;
+
+	s_jakeI = 0;
+	s_jakeVals[0] = -1.0f;
+	s_jakeVals[1] = -0.0f;
+	s_jakeVals[2] = +1.0f;
+	s_jakeVals[3] = +0.0f;
+	s_jakeI = 2*s_lineOdd;
+	s_lineOdd ^= 1;
 }
 
 
@@ -277,18 +296,23 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 
 		unsigned int* texture = s_pVideoMemoryBGRA;
 
+		if (pixelPos == 0)
+		{
+			s_lineOdd = 0;
+		}
 		if (pixelPos%910 == 0)
 		{
 			lineInit();
 		}
 
 		compositeSignal = sampleValue - 60;
-		decodeCompositeSignalYC(compositeSignal, &Y, &C);
-		decodeChromaSignalIQ(C, &I, &Q);
+		decodeSignalY(compositeSignal, &Y);
+		C = compositeSignal - Y;
+		decodeSignalIQ(compositeSignal, &I, &Q);
 
-		R = (int)((float)Y + 0.9563f * (float)I + 0.6210f * (float)Q);
-		G = (int)((float)Y - 0.2721f * (float)I - 0.6474f * (float)Q);
-		B = (int)((float)Y - 1.1070f * (float)I + 1.7406f * (float)Q);
+		R = (int)((float)Y + 0.9563f * (float)I/256.0f + 0.6210f * (float)Q/256.0f);
+		G = (int)((float)Y - 0.2721f * (float)I/256.0f - 0.6474f * (float)Q/256.0f);
+		B = (int)((float)Y - 1.1070f * (float)I/256.0f + 1.7406f * (float)Q/256.0f);
 		if (displayMode == DISPLAY_RGB)
 		{
 			red = (unsigned int)R;
@@ -322,21 +346,22 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		}
 		else if (displayMode == DISPLAY_CHROMA)
 		{
-			C = 128+(clampInt(-128<<0, C, 128<<0) >> 1);
+			C = 128+(clampInt(-128<<1, C, 128<<1) >> 1);
 			red = (unsigned int)C;
 			green = (unsigned int)C;
 			blue = (unsigned int)C;
 		}
 		else if (displayMode == DISPLAY_I)
 		{
-			I = 128+(clampInt(-128<<0, I, 128<<0) >> 1);
+			/*printf("I:%d Q:%d\n", I, Q);*/
+			I = 128+(clampInt(-128<<8, I, 128<<8) >> 8);
 			red = (unsigned int)I;
 			green = (unsigned int)I;
 			blue = (unsigned int)I;
 		}
 		else if (displayMode == DISPLAY_Q)
 		{
-			Q = 128+(clampInt(-128<<0, Q, 128<<0) >> 1);
+			Q = 128+(clampInt(-128<<8, Q, 128<<8) >> 8);
 			red = (unsigned int)Q;
 			green = (unsigned int)Q;
 			blue = (unsigned int)Q;
