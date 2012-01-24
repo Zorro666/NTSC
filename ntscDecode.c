@@ -39,6 +39,8 @@ static float s_CHROMA_T = 0.0f;
 static int s_displayModeFlags = DISPLAY_RGB | (DISPLAY_INTERLACED << 16);
 static unsigned int* s_pVideoMemoryBGRA = NULL;
 static int s_pixelPos = 0;
+static int s_xpos = 0;
+static int s_ypos = 0;
 static int s_decodeOption = DECODE_JAKE;
 
 /*
@@ -225,7 +227,6 @@ static void decodeSignalIQ(const int compositeSignal, int* outI, int* outQ)
 	*outQ = Q;
 }
 
-static int s_lineOdd = 0;
 static void lineInit(void)
 {
 	int i;
@@ -243,16 +244,6 @@ static void lineInit(void)
 	s_CHROMA_T = 0.0f;
  	s_CHROMA_T += (float)(M_PI / 180.0f) * 33.0f;
 	s_CHROMA_T = 0.0f;
-
-/*
-	s_jakeI = 0;
-	s_jakeVals[0] = -1.0f;
-	s_jakeVals[1] = -0.0f;
-	s_jakeVals[2] = +1.0f;
-	s_jakeVals[3] = +0.0f;
-	s_jakeI = 2*s_lineOdd;
-	s_lineOdd ^= 1;
-*/
 }
 
 
@@ -266,6 +257,8 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 
 	s_displayModeFlags = DISPLAY_RGB | (DISPLAY_INTERLACED << 16);
 	s_pVideoMemoryBGRA = pVideoMemoryBGRA;
+	s_xpos = 0;
+	s_ypos = 0;
 	s_pixelPos = 0;
 
 	computeLowPassCoeffs(s_LPFY_a, s_LPFY_b, NTSC_Y_LPF_CUTOFF, NTSC_SAMPLE_RATE);
@@ -283,8 +276,8 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 	s_jakeVals[1] = -0.0f;
 	s_jakeVals[2] = +1.0f;
 	s_jakeVals[3] = +0.0f;
-	s_jakeI = 2*s_lineOdd;
-	s_lineOdd ^= 1;
+
+	lineInit();
 }
 
 void ntscDecodeAddSample(const unsigned char sampleValue)
@@ -297,7 +290,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 	if (s_decodeOption == DECODE_JAKE)
 	{
 		const int displayMode = s_displayModeFlags & 0xFFFF;
-		/*const int displayFlags = s_displayModeFlags >> 16;*/
+		const int displayFlags = s_displayModeFlags >> 16;
 		int pixelPos = s_pixelPos;
 		int compositeSignal;
 
@@ -316,14 +309,9 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 
 		unsigned int* texture = s_pVideoMemoryBGRA;
 
-		if (pixelPos == 0)
+		if ((s_xpos == 0) && (s_ypos == 0))
 		{
-			s_lineOdd = 0;
 			s_jakeI = 0;
-		}
-		if (pixelPos%910 == 0)
-		{
-			lineInit();
 		}
 
 		compositeSignal = sampleValue - 60;
@@ -396,12 +384,39 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		red = (unsigned int)clampInt(0, (int)red, 255);
 		green = (unsigned int)clampInt(0, (int)green, 255);
 		blue = (unsigned int)clampInt(0, (int)blue, 255);
+
 		/* BGRA format */
 		texture[pixelPos] = (unsigned int)((alpha<<24) | (red<<16) | (green<<8) | blue);
+		s_xpos++;
 		pixelPos++;
-		if (pixelPos >= NTSC_SAMPLES_PER_LINE * NTSC_LINES_PER_FRAME)
+		if (s_xpos >= NTSC_SAMPLES_PER_LINE)
 		{
-			pixelPos = 0;
+			lineInit();
+			s_xpos = 0;
+			if (displayFlags & DISPLAY_INTERLACED)
+			{
+				s_ypos += 2;
+			}
+			else
+			{
+				s_ypos++;
+			}
+			if (displayFlags & DISPLAY_INTERLACED)
+			{
+				pixelPos += NTSC_SAMPLES_PER_LINE;
+				if (s_ypos >= NTSC_LINES_PER_FRAME)
+				{
+					s_ypos -= NTSC_LINES_PER_FRAME;
+				}
+			}
+			else
+			{
+				if (s_ypos >= NTSC_LINES_PER_FRAME)
+				{
+					s_ypos = 0;
+				}
+			}
+			pixelPos = s_ypos * NTSC_SAMPLES_PER_LINE;
 		}
 		s_pixelPos = pixelPos;
 	}
