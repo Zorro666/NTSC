@@ -1,19 +1,17 @@
 High
-* Test Y on real signal data
+* Add INTERLACED render mode
+* CRTSIM - process frame data 1 behind samples to stop rolling etc.
 * Add HSYNC detection - print num samples per line for each row
-* Verify LPF to get Y signal
-* Make RGB output
 
 Medium
 * Add VSYNC detection
-* LPF to get IQ signal
-* demodulate IQ signal -> I, Q
+* Add colour carrier phase sync up
+* Work out hacked in scaling for IQ values
+* Convert to fixed point instead of floats
 
 Low
 * Debug options: zoom, pan
-* Debug options: Y, I, Q views
 * Debug options: single frame, frame step
-* Debug options: interlace on/off
 * Debug options: graph window: h-sync, v-sync,  h-lines, signal, Y, I, Q, R, G, B
 
 Future
