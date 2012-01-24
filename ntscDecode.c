@@ -26,12 +26,17 @@ const char* const DISPLAY_MODES[] = {
 	"INVALID"
 	};
 
+const char* const DISPLAY_FLAGS[] = {
+	"INTERLACED"
+	"INVALID"
+	};
+
 static float s_LPFY_inSignal[3];
 static float s_LPFY_outY[3];
 static float s_LPFY_a[3];
 static float s_LPFY_b[2];
 static float s_CHROMA_T = 0.0f;
-static int s_displayMode = DISPLAY_RGB;
+static int s_displayModeFlags = DISPLAY_RGB | (DISPLAY_INTERLACED << 16);
 static unsigned int* s_pVideoMemoryBGRA = NULL;
 static int s_pixelPos = 0;
 static int s_decodeOption = DECODE_JAKE;
@@ -252,10 +257,12 @@ static void lineInit(void)
 /* Public API */
 void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 {
-	s_decodeOption = DECODE_JAKE;
+	int displayMode;
+	int displayFlags;
 	s_decodeOption = DECODE_CRTSIM;
+	s_decodeOption = DECODE_JAKE;
 
-	s_displayMode = DISPLAY_RGB;
+	s_displayModeFlags = DISPLAY_RGB | (DISPLAY_INTERLACED << 16);
 	s_pVideoMemoryBGRA = pVideoMemoryBGRA;
 	s_pixelPos = 0;
 
@@ -263,7 +270,9 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 	printf("LPFY coeffs\n");
 	printf("a[0]:%f a[1]:%f a[2]:%f b[0]:%f b[1]:%f\n", s_LPFY_a[0], s_LPFY_a[1], s_LPFY_a[2], s_LPFY_b[0], s_LPFY_b[1]);
 
-	printf("displayMode:'%s' (%d)\n", DISPLAY_MODES[s_displayMode], s_displayMode);
+	displayMode = s_displayModeFlags & 0xFFFF;
+	displayFlags = s_displayModeFlags >> 16;
+	printf("displayMode:'%s' (%d) displayFlags:0x%X\n", DISPLAY_MODES[displayMode], displayMode, displayFlags);
 
 	crtSimInit(pVideoMemoryBGRA);
 }
@@ -277,8 +286,9 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 
 	if (s_decodeOption == DECODE_JAKE)
 	{
+		const int displayMode = s_displayModeFlags & 0xFFFF;
+		/*const int displayFlags = s_displayModeFlags >> 16;*/
 		int pixelPos = s_pixelPos;
-		int displayMode = s_displayMode;
 		int compositeSignal;
 
 		int Y;
@@ -388,13 +398,16 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 
 void ntscDecodeTick(void)
 {
-	int displayMode = s_displayMode;
+	int displayMode = s_displayModeFlags & 0xFFFF;
+	int displayFlags = s_displayModeFlags >> 16;
+
 	const int oldDisplayMode = displayMode;
+	const int oldDisplayFlags = displayFlags;
 
 	if (s_decodeOption == DECODE_CRTSIM)
 	{
-		crtSimTick(s_displayMode);
-		crtSimTick(s_displayMode);
+		crtSimTick(s_displayModeFlags);
+		crtSimTick(s_displayModeFlags);
 	}
 
 	if (windowCheckKey('J'))
@@ -415,11 +428,6 @@ void ntscDecodeTick(void)
 		memset(s_pVideoMemoryBGRA, 0, 4 * NTSC_SAMPLES_PER_LINE * NTSC_LINES_PER_FRAME);
 	}
 
-	if (windowCheckKey('D'))
-	{
-		windowClearKey('D');
-		displayMode++;
-	}
 	if (windowCheckKey('R'))
 	{
 		windowClearKey('R');
@@ -465,6 +473,11 @@ void ntscDecodeTick(void)
 		windowClearKey('Q');
 		displayMode = DISPLAY_Q;
 	}
+	if (windowCheckKey('D'))
+	{
+		windowClearKey('D');
+		displayFlags ^= (DISPLAY_INTERLACED);
+	}
 	if (displayMode > DISPLAY_MAX)
 	{
 		displayMode = 0;
@@ -472,7 +485,11 @@ void ntscDecodeTick(void)
 	if (displayMode != oldDisplayMode)
 	{
 		printf("displayMode:'%s' (%d)\n", DISPLAY_MODES[displayMode], displayMode);
-		s_displayMode = displayMode;
 	}
+	if (displayFlags != oldDisplayFlags)
+	{
+		printf("displayFlags:'%s' (%d)\n", DISPLAY_MODES[displayMode], displayFlags);
+	}
+	s_displayModeFlags = displayMode | (displayFlags << 16);
 }
 

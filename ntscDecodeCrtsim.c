@@ -100,16 +100,34 @@ typedef struct DecodeNTSC
 		int _n;
 } DecodeNTSC;
 
-void decodeNTSCpostField(DecodeNTSC* const pDecodeNTSC)
+void decodeNTSCpostField(DecodeNTSC* const pDecodeNTSC, const int displayModeFlags)
 {
+	int displayFlags = displayModeFlags >> 16;
 	int lines = pDecodeNTSC->_bottomLine - pDecodeNTSC->_topLine;
 	int y;
+	printf("phase:%f\n", pDecodeNTSC->_verticalSyncPhase);
 	for (y = 0; y < lines; ++y) 
 	{
 		int line = y + pDecodeNTSC->_topLine;
-		float top = ((float)(line) - pDecodeNTSC->_verticalSyncPhase - pDecodeNTSC->_lineTop);
-		int topI = (int)top;
-		memcpy(s_outputTexture+(y+topI)*NTSC_SAMPLES_PER_LINE, s_internalTexture+y*NTSC_SAMPLES_PER_LINE*2, NTSC_SAMPLES_PER_LINE*sizeof(int));
+		int topI;
+		int outY;
+		if (displayFlags & DISPLAY_INTERLACED)
+		{
+			float top = ((float)(line) - pDecodeNTSC->_verticalSyncPhase - pDecodeNTSC->_lineTop);
+			topI = (int)top;
+			outY = topI + y;
+		}
+		else
+		{
+			int top = 0;
+			if (pDecodeNTSC->_verticalSyncPhase > 0.5f)
+			{
+				top += 262;
+			}
+			topI = top;
+			outY = topI + y*2;
+		}
+		memcpy(s_outputTexture+outY*NTSC_SAMPLES_PER_LINE, s_internalTexture+y*NTSC_SAMPLES_PER_LINE*2, NTSC_SAMPLES_PER_LINE*sizeof(int));
 		if (0)
 		{
 			/*
@@ -126,9 +144,10 @@ void decodeNTSCpostField(DecodeNTSC* const pDecodeNTSC)
 }
 
 /* Process a single scanline here */
-static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMode)
+static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayModeFlags)
 {
 	/* Find the horizontal sync position. */
+	const int displayMode = displayModeFlags & 0xFFFF;
 	int offset = 0;
 	int i;
 	int linePeriod;
@@ -430,7 +449,7 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 	++pDecodeNTSC->_line;
 	if (pDecodeNTSC->_foundVerticalSync && pDecodeNTSC->_line == pDecodeNTSC->_minLinesPerField)
 	{
-		decodeNTSCpostField(pDecodeNTSC);
+		decodeNTSCpostField(pDecodeNTSC, displayModeFlags);
 	}
 }
 
@@ -553,11 +572,11 @@ void crtSimAddSample(const unsigned char sample)
 	}
 }
 
-void crtSimTick(const int displayMode)
+void crtSimTick(const int displayModeFlags)
 {
 	do
 	{	
-  	decodeNTSCprocess(&s_decodeNTSC, displayMode);
+  	decodeNTSCprocess(&s_decodeNTSC, displayModeFlags);
 	} while (s_decodeNTSC._line != 0 || s_decodeNTSC._foundVerticalSync);
 }
 
