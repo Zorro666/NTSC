@@ -244,6 +244,7 @@ static void lineInit(void)
  	s_CHROMA_T += (float)(M_PI / 180.0f) * 33.0f;
 	s_CHROMA_T = 0.0f;
 
+/*
 	s_jakeI = 0;
 	s_jakeVals[0] = -1.0f;
 	s_jakeVals[1] = -0.0f;
@@ -251,6 +252,7 @@ static void lineInit(void)
 	s_jakeVals[3] = +0.0f;
 	s_jakeI = 2*s_lineOdd;
 	s_lineOdd ^= 1;
+*/
 }
 
 
@@ -275,6 +277,14 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 	printf("displayMode:'%s' (%d) displayFlags:0x%X\n", DISPLAY_MODES[displayMode], displayMode, displayFlags);
 
 	crtSimInit(pVideoMemoryBGRA);
+
+	s_jakeI = 0;
+	s_jakeVals[0] = -1.0f;
+	s_jakeVals[1] = -0.0f;
+	s_jakeVals[2] = +1.0f;
+	s_jakeVals[3] = +0.0f;
+	s_jakeI = 2*s_lineOdd;
+	s_lineOdd ^= 1;
 }
 
 void ntscDecodeAddSample(const unsigned char sampleValue)
@@ -309,6 +319,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		if (pixelPos == 0)
 		{
 			s_lineOdd = 0;
+			s_jakeI = 0;
 		}
 		if (pixelPos%910 == 0)
 		{
