@@ -1,18 +1,17 @@
 High
-* Add INTERLACED render mode
 * CRTSIM - process frame data 1 behind samples to stop rolling etc.
-* Add HSYNC detection - print num samples per line for each row
+* NTSC - Add HSYNC detection - print num samples per line for each row
 
 Medium
-* Add VSYNC detection
-* Add colour carrier phase sync up
-* Work out hacked in scaling for IQ values
-* Convert to fixed point instead of floats
+* NTSC - Add VSYNC detection
+* NTSC - Add colour carrier phase sync up
+* NTSC - Work out hacked in scaling for IQ values
+* NTSC - Convert to fixed point instead of floats
 
 Low
-* Debug options: zoom, pan
-* Debug options: single frame, frame step
-* Debug options: graph window: h-sync, v-sync,  h-lines, signal, Y, I, Q, R, G, B
+* Tint, brightness
 
 Future
-* Tint, brightness
+* Debug options: zoom, pan
+* Debug options: single frame, frame step
+* Debug options: graph window: h-sync, v-sync,  h-lines
