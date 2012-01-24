@@ -105,7 +105,7 @@ void decodeNTSCpostField(DecodeNTSC* const pDecodeNTSC, const int displayModeFla
 	int displayFlags = displayModeFlags >> 16;
 	int lines = pDecodeNTSC->_bottomLine - pDecodeNTSC->_topLine;
 	int y;
-	printf("phase:%f\n", pDecodeNTSC->_verticalSyncPhase);
+	/*printf("phase:%f\n", pDecodeNTSC->_verticalSyncPhase);*/
 	for (y = 0; y < lines; ++y) 
 	{
 		int line = y + pDecodeNTSC->_topLine;
