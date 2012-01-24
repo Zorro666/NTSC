@@ -125,7 +125,7 @@ void decodeNTSCpostField(DecodeNTSC* const pDecodeNTSC, const int displayModeFla
 				top += 262;
 			}
 			topI = top;
-			outY = topI + y*2;
+			outY = topI + y;
 		}
 		memcpy(s_outputTexture+outY*NTSC_SAMPLES_PER_LINE, s_internalTexture+y*NTSC_SAMPLES_PER_LINE*2, NTSC_SAMPLES_PER_LINE*sizeof(int));
 		if (0)
