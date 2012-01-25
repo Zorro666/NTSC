@@ -42,6 +42,36 @@ static int s_pixelPos = 0;
 static int s_xpos = 0;
 static int s_ypos = 0;
 static int s_decodeOption = DECODE_JAKE;
+static int s_syncSamples = 0;
+static int s_sampleCounter = 0;
+static int s_fieldCounter = 0;
+static int s_samplesPerField = 0;
+
+/* Sample values (/4 compared to NTSC reference levels because 8-bit instead of 10-bit */
+/* Sync = 4, Blank = 60, Black = 70, White = 200 */
+#define NTSC_VALUE_SYNC		(4)
+#define NTSC_VALUE_BLANK	(60)
+#define NTSC_VALUE_BLACK	(70)
+#define NTSC_VALUE_WHITE	(200)
+
+/*
+	HSYNC
+	0V = SYNC
+The format of the horizontal sync pulse varies. In the 525-line NTSC system it is a 4.85 µs-long pulse at 0 V
+*/
+
+/*
+	 VSYNC
+The format of such a signal in 525-line NTSC is:
+pre-equalizing pulses (6 to start scanning odd lines, 5 to start scanning even lines)
+long-sync pulses (5 pulses)
+post-equalizing pulses (5 to start scanning odd lines, 4 to start scanning even lines)
+Each pre- or post- equalizing pulse consists in half a scan line of black signal: 2 µs at 0 V, followed by 30 µs at 0.3 V.
+Each long sync pulse consists in an equalizing pulse with timings inverted: 30 µs at 0 V, followed by 2 µs at 0.3 V.
+0.3V = BLANK
+*/
+
+/* NEED TO CONSIDER BACK & FRONT PORCH - for hsync detection */
 
 /*
 Y = LPF2(video)
@@ -112,15 +142,6 @@ Lowpass:
       a2 = 2* a1;
       a3 = a1;
       b1 = 2.0 * ( 1.0 - c*c) * a1;
-      b2 = ( 1.0 - r * c + c * c) * a1;
-
-Hipass:
-      c = tan(pi * f / sample_rate);
-
-      a1 = 1.0 / ( 1.0 + r * c + c * c);
-      a2 = -2*a1;
-      a3 = a1;
-      b1 = 2.0 * ( c*c - 1.0) * a1;
       b2 = ( 1.0 - r * c + c * c) * a1;
 */
 
@@ -200,7 +221,6 @@ static void decodeSignalIQ(const int compositeSignal, int* outI, int* outQ)
 	*/
 	sinColourCarrier = s_jakeVals[s_jakeI&3];
 	cosColourCarrier = s_jakeVals[(s_jakeI+3)&3];
-	s_jakeI++;
 
 	sinValue = chromaValue * sinColourCarrier;
 	cosValue = chromaValue * cosColourCarrier;
@@ -278,6 +298,10 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 	s_jakeVals[3] = +0.0f;
 
 	lineInit();
+	s_syncSamples = 0;
+	s_sampleCounter = 0;
+	s_fieldCounter = 0;
+	s_samplesPerField = 0;
 }
 
 void ntscDecodeAddSample(const unsigned char sampleValue)
@@ -293,14 +317,15 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		const int displayFlags = s_displayModeFlags >> 16;
 		int pixelPos = s_pixelPos;
 		int compositeSignal;
+		int nonSyncFound = 0;
 
-		int Y;
-		int C;
-		int I;
-		int Q;
-		int R;
-		int G;
-		int B;
+		int Y = 0;
+		int C = 0;
+		int I = 0;
+		int Q = 0;
+		int R = 0;
+		int G = 0;
+		int B = 0;
 
 		unsigned int red = 0;
 		unsigned int green = 0;
@@ -314,14 +339,75 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			s_jakeI = 0;
 		}
 
-		compositeSignal = sampleValue - 60;
-		decodeSignalY(compositeSignal, &Y);
-		C = compositeSignal - Y;
-		decodeSignalIQ(compositeSignal, &I, &Q);
+		compositeSignal = sampleValue - NTSC_VALUE_BLANK;
+		/* HSYNC is 4.85us long which is 69.5 NTSC samples */
+		if (sampleValue <= NTSC_VALUE_SYNC)
+		{
+			s_syncSamples++;
+		}
+		else
+		{
+			nonSyncFound = 1;
+		}
+		if ((s_syncSamples > 60) && (nonSyncFound==1))
+		{
+			/* HSYNC */
+			/*printf("\tHSYNC x:%d y:%d\n", s_xpos, s_ypos);*/
 
-		R = (int)((float)Y + 0.9563f * (float)I/256.0f + 0.6210f * (float)Q/256.0f);
-		G = (int)((float)Y - 0.2721f * (float)I/256.0f - 0.6474f * (float)Q/256.0f);
-		B = (int)((float)Y - 1.1070f * (float)I/256.0f + 1.7406f * (float)Q/256.0f);
+			s_xpos = 0;
+			lineInit();
+			pixelPos = s_ypos * NTSC_SAMPLES_PER_LINE;
+		}
+		s_sampleCounter++;
+		s_samplesPerField++;
+		if (s_sampleCounter == 910)
+		{
+			s_sampleCounter = 0;
+			if (displayFlags & DISPLAY_INTERLACED)
+			{
+				s_ypos += 2;
+			}
+			else
+			{
+				s_ypos++;
+			}
+			if (s_ypos >= NTSC_LINES_PER_FRAME)
+			{
+				s_ypos = NTSC_LINES_PER_FRAME-1;
+			}
+			pixelPos = s_ypos * NTSC_SAMPLES_PER_LINE;
+		}
+		if ((s_syncSamples > 382) && (nonSyncFound==1))
+		{
+			/* VSYNC */
+			printf("VSYNC x:%d y:%d samples:%d\n", s_xpos, s_ypos, s_samplesPerField);
+			s_fieldCounter++;
+			s_ypos = s_fieldCounter & 0x1;
+			if (displayFlags & DISPLAY_INTERLACED)
+			{
+			}
+			else
+			{
+				s_ypos *= 262;
+			}
+			pixelPos = s_ypos * NTSC_SAMPLES_PER_LINE;
+			printf("VSYNC newy:%d\n", s_ypos);
+			s_samplesPerField = 0;
+		}
+		if (nonSyncFound==1)
+		{
+			s_syncSamples = 0;
+		}
+		if (compositeSignal >= -60)
+		{
+			decodeSignalY(compositeSignal, &Y);
+			C = compositeSignal - Y;
+			decodeSignalIQ(compositeSignal, &I, &Q);
+
+			R = (int)((float)Y + 0.9563f * (float)I/256.0f + 0.6210f * (float)Q/256.0f);
+			G = (int)((float)Y - 0.2721f * (float)I/256.0f - 0.6474f * (float)Q/256.0f);
+			B = (int)((float)Y - 1.1070f * (float)I/256.0f + 1.7406f * (float)Q/256.0f);
+		}
 		if (displayMode == DISPLAY_RGB)
 		{
 			red = (unsigned int)R;
@@ -388,35 +474,12 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		/* BGRA format */
 		texture[pixelPos] = (unsigned int)((alpha<<24) | (red<<16) | (green<<8) | blue);
 		s_xpos++;
+		s_jakeI++;
 		pixelPos++;
 		if (s_xpos >= NTSC_SAMPLES_PER_LINE)
 		{
-			lineInit();
-			s_xpos = 0;
-			if (displayFlags & DISPLAY_INTERLACED)
-			{
-				s_ypos += 2;
-			}
-			else
-			{
-				s_ypos++;
-			}
-			if (displayFlags & DISPLAY_INTERLACED)
-			{
-				pixelPos += NTSC_SAMPLES_PER_LINE;
-				if (s_ypos >= NTSC_LINES_PER_FRAME)
-				{
-					s_ypos -= NTSC_LINES_PER_FRAME;
-				}
-			}
-			else
-			{
-				if (s_ypos >= NTSC_LINES_PER_FRAME)
-				{
-					s_ypos = 0;
-				}
-			}
-			pixelPos = s_ypos * NTSC_SAMPLES_PER_LINE;
+			s_xpos = NTSC_SAMPLES_PER_LINE-1;
+			pixelPos--;
 		}
 		s_pixelPos = pixelPos;
 	}
@@ -433,7 +496,7 @@ void ntscDecodeTick(void)
 	if (s_decodeOption == DECODE_CRTSIM)
 	{
 		crtSimTick(s_displayModeFlags);
-		crtSimTick(s_displayModeFlags);
+		/*crtSimTick(s_displayModeFlags);*/
 	}
 
 	if (windowCheckKey('J'))
