@@ -374,6 +374,16 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			if (s_ypos >= NTSC_LINES_PER_FRAME)
 			{
 				s_ypos = NTSC_LINES_PER_FRAME-1;
+				s_ypos = 0;
+				s_fieldCounter++;
+				s_ypos = s_fieldCounter & 0x1;
+				if (displayFlags & DISPLAY_INTERLACED)
+				{
+				}
+				else
+				{
+					s_ypos *= 262;
+				}
 			}
 			pixelPos = s_ypos * NTSC_SAMPLES_PER_LINE;
 		}
@@ -381,6 +391,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		{
 			/* VSYNC */
 			printf("VSYNC x:%d y:%d samples:%d\n", s_xpos, s_ypos, s_samplesPerField);
+#if 0
 			s_fieldCounter++;
 			s_ypos = s_fieldCounter & 0x1;
 			if (displayFlags & DISPLAY_INTERLACED)
@@ -390,6 +401,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			{
 				s_ypos *= 262;
 			}
+#endif
 			pixelPos = s_ypos * NTSC_SAMPLES_PER_LINE;
 			printf("VSYNC newy:%d\n", s_ypos);
 			s_samplesPerField = 0;
