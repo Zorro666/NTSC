@@ -42,10 +42,14 @@ static int s_pixelPos = 0;
 static int s_xpos = 0;
 static int s_ypos = 0;
 static int s_decodeOption = DECODE_JAKE;
+
 static int s_syncSamples = 0;
+static int s_blankSamples = 0;
+
 static int s_sampleCounter = 0;
-static int s_fieldCounter = 0;
 static int s_samplesPerField = 0;
+
+static int s_fieldCounter = 0;
 
 /* Sample values (/4 compared to NTSC reference levels because 8-bit instead of 10-bit */
 /* Sync = 4, Blank = 60, Black = 70, White = 200 */
@@ -298,8 +302,12 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 	s_jakeVals[3] = +0.0f;
 
 	lineInit();
+
 	s_syncSamples = 0;
+	s_blankSamples = 0;
+
 	s_sampleCounter = 0;
+
 	s_fieldCounter = 0;
 	s_samplesPerField = 0;
 }
@@ -317,7 +325,9 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		const int displayFlags = s_displayModeFlags >> 16;
 		int pixelPos = s_pixelPos;
 		int compositeSignal;
-		int nonSyncFound = 0;
+		int syncFound = 0;
+		int blankFound = 0;
+		int blankSignal =0;
 
 		int Y = 0;
 		int C = 0;
@@ -334,6 +344,9 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 
 		unsigned int* texture = s_pVideoMemoryBGRA;
 
+		s_sampleCounter++;
+		s_samplesPerField++;
+
 		if ((s_xpos == 0) && (s_ypos == 0))
 		{
 			s_jakeI = 0;
@@ -343,13 +356,16 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		/* HSYNC is 4.85us long which is 69.5 NTSC samples */
 		if (sampleValue <= NTSC_VALUE_SYNC)
 		{
+			syncFound = 1;
 			s_syncSamples++;
 		}
-		else
+		if (sampleValue <= NTSC_VALUE_BLANK)
 		{
-			nonSyncFound = 1;
+			blankFound = 1;
+			s_blankSamples++;
 		}
-		if ((s_syncSamples > 60) && (nonSyncFound==1))
+
+		if ((s_syncSamples > 60) && (syncFound==0))
 		{
 			/* HSYNC */
 			/*printf("\tHSYNC x:%d y:%d\n", s_xpos, s_ypos);*/
@@ -357,9 +373,9 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			s_xpos = 0;
 			lineInit();
 			pixelPos = s_ypos * NTSC_SAMPLES_PER_LINE;
+			s_sampleCounter = 910;
 		}
-		s_sampleCounter++;
-		s_samplesPerField++;
+
 		if (s_sampleCounter == 910)
 		{
 			s_sampleCounter = 0;
@@ -387,7 +403,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			}
 			pixelPos = s_ypos * NTSC_SAMPLES_PER_LINE;
 		}
-		if ((s_syncSamples > 382) && (nonSyncFound==1))
+		if ((s_syncSamples > 382) && (syncFound==0))
 		{
 			/* VSYNC */
 			printf("VSYNC x:%d y:%d samples:%d\n", s_xpos, s_ypos, s_samplesPerField);
@@ -406,11 +422,13 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			printf("VSYNC newy:%d\n", s_ypos);
 			s_samplesPerField = 0;
 		}
-		if (nonSyncFound==1)
+
+		if (s_blankSamples >= 4)
 		{
-			s_syncSamples = 0;
+			blankSignal = 1;
 		}
-		if (compositeSignal >= -60)
+
+		if (blankSignal == 0)
 		{
 			decodeSignalY(compositeSignal, &Y);
 			C = compositeSignal - Y;
@@ -485,6 +503,16 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 
 		/* BGRA format */
 		texture[pixelPos] = (unsigned int)((alpha<<24) | (red<<16) | (green<<8) | blue);
+
+		if (syncFound==0)
+		{
+			s_syncSamples = 0;
+		}
+		if (blankFound==0)
+		{
+			s_blankSamples = 0;
+		}
+
 		s_xpos++;
 		s_jakeI++;
 		pixelPos++;
