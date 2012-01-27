@@ -1,5 +1,4 @@
 High
-* CRTSIM - process frame data 1 behind samples to stop rolling etc.
 * NTSC - Add HSYNC detection - print num samples per line for each row
 
 Medium
@@ -7,6 +6,7 @@ Medium
 * NTSC - Add colour carrier phase sync up
 * NTSC - Work out hacked in scaling for IQ values
 * NTSC - Convert to fixed point instead of floats
+* NTSC - use a filter generation program to find LPF weights: 0.25 (Y, I, Q), HSYNC, VSYNC long LPFs
 
 Low
 * Tint, brightness
