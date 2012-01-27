@@ -359,11 +359,6 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			s_vsyncFound = 0;
 		}
 
-		if ((s_xpos == 0) && (s_ypos == 0))
-		{
-			s_jakeI = 0;
-		}
-
 		compositeSignal = sampleValue - NTSC_VALUE_BLANK;
 		/* HSYNC is 4.85us long which is 69.5 NTSC samples */
 		if (sampleValue <= NTSC_VALUE_SYNC)
@@ -432,6 +427,11 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		if (s_blankSamples >= 4)
 		{
 			blankSignal = 1;
+		}
+
+		if ((s_xpos == 0) && (s_ypos == 0))
+		{
+			s_jakeI = 3;
 		}
 
 		if (blankSignal == 0)
