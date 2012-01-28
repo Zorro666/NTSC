@@ -53,6 +53,8 @@ static int s_fieldCounter = 0;
 
 static int s_vsyncFound = 0;
 static int s_hsyncFound = 0;
+static int s_contrast = (256*3)/2;
+static int s_brightness = 0;
 
 /* Sample values (/4 compared to NTSC reference levels because 8-bit instead of 10-bit */
 /* Sync = 4, Blank = 60, Black = 70, White = 200 */
@@ -437,6 +439,9 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		if (blankSignal == 0)
 		{
 			decodeSignalY(compositeSignal, &Y);
+			Y = (Y * 255)/200 + 00;
+			Y = (Y * s_contrast)/256;
+			Y = Y + s_brightness;
 			C = compositeSignal - Y;
 			decodeSignalIQ(compositeSignal, &I, &Q);
 
