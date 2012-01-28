@@ -369,9 +369,13 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 
 		s_sampleCounter++;
 		s_samplesPerField++;
-		if (s_samplesPerField > 200000)
+		if (s_samplesPerField > 3000)
 		{
 			s_vsyncFound = 0;
+		}
+		if (s_sampleCounter > 200)
+		{
+			s_hsyncFound = 0;
 		}
 
 		compositeSignal = sampleValue - NTSC_VALUE_BLANK;
