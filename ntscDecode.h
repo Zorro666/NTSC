@@ -25,7 +25,7 @@ void ntscDecodeTick(void);
 extern int windowCheckKey(const int key);
 extern void windowClearKey(const int key);
 
-extern inline float clampFloat(float low, float value, float high) 
+extern inline float clampFloat(const float value, const float low, const float high) 
 { 
 	if (value < low)
 	{
@@ -38,7 +38,7 @@ extern inline float clampFloat(float low, float value, float high)
 	return value;
 }
 
-extern inline int minInt(int a, int b)
+extern inline int minInt(const int a, const int b)
 {
 	if (a < b)
 	{
@@ -47,7 +47,7 @@ extern inline int minInt(int a, int b)
 	return b;
 }
 
-extern inline int maxInt(int a, int b)
+extern inline int maxInt(const int a, const int b)
 {
 	if (a > b)
 	{
@@ -56,7 +56,7 @@ extern inline int maxInt(int a, int b)
 	return b;
 }
 
-extern inline int clampInt(int low, int value, int high) 
+extern inline int clampInt(const int value, const int low, const int high) 
 { 
 	if (value < low)
 	{

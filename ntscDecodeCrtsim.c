@@ -172,7 +172,7 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 	/* two, and so that we get the correct "wobble" behavior. */
 	linePeriod = pDecodeNTSC->_maxSamplesPerLine - offset;
 	pDecodeNTSC->_linePeriod = (2*pDecodeNTSC->_linePeriod + linePeriod)/3;
-	pDecodeNTSC->_linePeriod = clampInt(pDecodeNTSC->_minSamplesPerLine, pDecodeNTSC->_linePeriod, pDecodeNTSC->_maxSamplesPerLine);
+	pDecodeNTSC->_linePeriod = clampInt(pDecodeNTSC->_linePeriod, pDecodeNTSC->_minSamplesPerLine, pDecodeNTSC->_maxSamplesPerLine);
 	offset = pDecodeNTSC->_maxSamplesPerLine - pDecodeNTSC->_linePeriod;
 
 	/* Find the vertical sync position. */
@@ -271,7 +271,7 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 			totalSignal += (int)(readerGetItem(offset + i)) - 60;
 		}
 		pDecodeNTSC->_crtLoad = 0.4f*pDecodeNTSC->_crtLoad + 0.6f*(pDecodeNTSC->_baseLoad + ((float)totalSignal - 42000.0f)/140000.0f);
-		bloom = clampFloat(-2.0f, pDecodeNTSC->_bloomFactor*pDecodeNTSC->_crtLoad, 10.0f);
+		bloom = clampFloat(pDecodeNTSC->_bloomFactor*pDecodeNTSC->_crtLoad, -2.0f, 10.0f);
 		horizontalSize = (1.0f - 6.3f*bloom/pDecodeNTSC->_active)*pDecodeNTSC->_horizontalSize;
 		samplesVisible = pDecodeNTSC->_active*horizontalSize;
 		sampleLeft = pDecodeNTSC->_preActive + pDecodeNTSC->_active*(0.5f + pDecodeNTSC->_horizontalPosition - horizontalSize/2.0f);
@@ -335,9 +335,9 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 				p[12] = s*iqMultipliers[(x + 3)&3];
 				Q = p[18] + p[12] + ((p[17] + p[13])<<2) + 7*(p[16] + p[14]) + (p[15]<<3);
 
-				R = pDecodeNTSC->_gamma0[clampInt(0, (Y + 243*I + 160*Q)>>16, 255)];
-				G = pDecodeNTSC->_gamma0[clampInt(0, (Y -  71*I - 164*Q)>>16, 255)];
-				B = pDecodeNTSC->_gamma0[clampInt(0, (Y - 283*I + 443*Q)>>16, 255)];
+				R = pDecodeNTSC->_gamma0[clampInt((Y + 243*I + 160*Q)>>16, 0, 255)];
+				G = pDecodeNTSC->_gamma0[clampInt((Y -  71*I - 164*Q)>>16, 0, 255)];
+				B = pDecodeNTSC->_gamma0[clampInt((Y - 283*I + 443*Q)>>16, 0, 255)];
 
 				if (displayMode == DISPLAY_RGB)
 				{
@@ -365,28 +365,28 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 				}
 				else if (displayMode == DISPLAY_Y)
 				{
-					Y = clampInt(0, Y, 255<<16) >> 16;
+					Y = clampInt(Y, 0, 255<<16) >> 16;
 					red = (unsigned int)Y;
 					green = (unsigned int)Y;
 					blue = (unsigned int)Y;
 				}
 				else if (displayMode == DISPLAY_CHROMA)
 				{
-					C = 128+(clampInt(-128<<16, C, 128<<16) >> 16);
+					C = 128+(clampInt(C, -128<<16, 128<<16) >> 16);
 					red = (unsigned int)C;
 					green = (unsigned int)C;
 					blue = (unsigned int)C;
 				}
 				else if (displayMode == DISPLAY_I)
 				{
-					I = 128+(clampInt(-128<<8, I, 128<<8) >> 8);
+					I = 128+(clampInt(I, -128<<8, 128<<8) >> 8);
 					red = (unsigned int)I;
 					green = (unsigned int)I;
 					blue = (unsigned int)I;
 				}
 				else if (displayMode == DISPLAY_Q)
 				{
-					Q = 128+(clampInt(-128<<8, Q, 128<<8) >> 8);
+					Q = 128+(clampInt(Q, -128<<8, 128<<8) >> 8);
 					red = (unsigned int)Q;
 					green = (unsigned int)Q;
 					blue = (unsigned int)Q;
@@ -398,9 +398,9 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 					green = (unsigned int)sampleValue;
 					blue = (unsigned int)sampleValue;
 				}
-				red = (unsigned int)clampInt(0, (int)red, 255);
-				green = (unsigned int)clampInt(0, (int)green, 255);
-				blue = (unsigned int)clampInt(0, (int)blue, 255);
+				red = (unsigned int)clampInt((int)red, 0, 255);
+				green = (unsigned int)clampInt((int)green, 0, 255);
+				blue = (unsigned int)clampInt((int)blue, 0, 255);
 				*(destination++) = (unsigned int)(0xff000000 | (red<<16) | (green<<8) | blue);
 			}
 		}
@@ -415,7 +415,7 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 			for (x = start; x < end; ++x) 
 			{
 				int s = (int)(readerGetItem(sp++)) - 60;
-				int y = pDecodeNTSC->_gamma0[clampInt(0, (s*yContrast + brightness)>>16, 255)];
+				int y = pDecodeNTSC->_gamma0[clampInt((s*yContrast + brightness)>>16, 0, 255)];
 				if (displayMode == DISPLAY_RGB)
 				{
 					red = (unsigned int)y;
@@ -435,9 +435,9 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 					green = (unsigned int)sampleValue;
 					blue = (unsigned int)sampleValue;
 				}
-				red = (unsigned int)clampInt(0, (int)red, 255);
-				green = (unsigned int)clampInt(0, (int)green, 255);
-				blue = (unsigned int)clampInt(0, (int)blue, 255);
+				red = (unsigned int)clampInt((int)red, 0, 255);
+				green = (unsigned int)clampInt((int)green, 0, 255);
+				blue = (unsigned int)clampInt((int)blue, 0, 255);
 				*(destination++) = (unsigned int)(0xff000000 | (red<<16) | (green<<8) | blue);
 			}
 		}

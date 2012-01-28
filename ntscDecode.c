@@ -197,7 +197,7 @@ static void decodeSignalY(const int compositeSignal, int* outY)
 	Y = (s_yLPF[6] + s_yLPF[0] + ((s_yLPF[5] + s_yLPF[1])<<2) + 7*(s_yLPF[4] + s_yLPF[2]) + (s_yLPF[3]<<3));
 	Y = Y / 32;
 
-	Y = clampInt(0, Y, 255);
+	Y = clampInt(Y, 0, 255);
 
 	*outY = Y;
 }
@@ -470,14 +470,14 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		}
 		else if (displayMode == DISPLAY_Y)
 		{
-			Y = clampInt(0, Y, 255<<0) >> 0;
+			Y = clampInt(Y, 0, 255<<0) >> 0;
 			red = (unsigned int)Y;
 			green = (unsigned int)Y;
 			blue = (unsigned int)Y;
 		}
 		else if (displayMode == DISPLAY_CHROMA)
 		{
-			C = 128+(clampInt(-128<<1, C, 128<<1) >> 1);
+			C = 128+(clampInt(C, -128<<1, 128<<1) >> 1);
 			red = (unsigned int)C;
 			green = (unsigned int)C;
 			blue = (unsigned int)C;
@@ -485,14 +485,14 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		else if (displayMode == DISPLAY_I)
 		{
 			/*printf("I:%d Q:%d\n", I, Q);*/
-			I = 128+(clampInt(-128<<8, I, 128<<8) >> 8);
+			I = 128+(clampInt(I, -128<<8, 128<<8) >> 8);
 			red = (unsigned int)I;
 			green = (unsigned int)I;
 			blue = (unsigned int)I;
 		}
 		else if (displayMode == DISPLAY_Q)
 		{
-			Q = 128+(clampInt(-128<<8, Q, 128<<8) >> 8);
+			Q = 128+(clampInt(Q, -128<<8, 128<<8) >> 8);
 			red = (unsigned int)Q;
 			green = (unsigned int)Q;
 			blue = (unsigned int)Q;
@@ -503,18 +503,18 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			green = (unsigned int)sampleValue;
 			blue = (unsigned int)sampleValue;
 		}
-		red = (unsigned int)clampInt(0, (int)red, 255);
-		green = (unsigned int)clampInt(0, (int)green, 255);
-		blue = (unsigned int)clampInt(0, (int)blue, 255);
+		red = (unsigned int)clampInt((int)red, 0, 255);
+		green = (unsigned int)clampInt((int)green, 0, 255);
+		blue = (unsigned int)clampInt((int)blue, 0, 255);
 
 		/* BGRA format */
 		texture[pixelPos] = (unsigned int)((alpha<<24) | (red<<16) | (green<<8) | blue);
 
-		if (syncFound==0)
+		if (syncFound == 0)
 		{
 			s_syncSamples = 0;
 		}
-		if (blankFound==0)
+		if (blankFound == 0)
 		{
 			s_blankSamples = 0;
 		}
