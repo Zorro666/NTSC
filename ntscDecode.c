@@ -208,6 +208,9 @@ static int s_iLPF[7];
 static int s_qLPF[7];
 static int s_jakeI = 0;
 static float s_jakeVals[4];
+static int s_gamma[256];
+#define NTSC_GAMMA (2.2f)
+static float s_gammaValue = NTSC_GAMMA;
 
 static void decodeSignalIQ(const int compositeSignal, int* outI, int* outQ)
 {
@@ -275,6 +278,15 @@ static void lineInit(void)
 	s_CHROMA_T = 0.0f;
 }
 
+static void computeGammaTable(void)
+{
+	int i;
+	float gammaVal = s_gammaValue;
+	for (i = 0; i < 256; i++)
+	{
+		s_gamma[i] = (int)(powf((float)(i)/255.0f, gammaVal)*255.0f);
+	}
+}
 
 /* Public API */
 void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
@@ -318,6 +330,7 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 
 	s_vsyncFound = 0;
 	s_hsyncFound = 0;
+	computeGammaTable();
 }
 
 void ntscDecodeAddSample(const unsigned char sampleValue)
@@ -448,6 +461,9 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			R = (int)((float)Y + 0.9563f * (float)I/256.0f + 0.6210f * (float)Q/256.0f);
 			G = (int)((float)Y - 0.2721f * (float)I/256.0f - 0.6474f * (float)Q/256.0f);
 			B = (int)((float)Y - 1.1070f * (float)I/256.0f + 1.7406f * (float)Q/256.0f);
+			R = s_gamma[clampInt(R, 0, 255)];
+			G = s_gamma[clampInt(G, 0, 255)];
+			B = s_gamma[clampInt(B, 0, 255)];
 		}
 		if (displayMode == DISPLAY_RGB)
 		{
