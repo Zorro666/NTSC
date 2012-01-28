@@ -5,58 +5,7 @@
 #include "ntscDecode.h"
 #include "ntscDecodeCrtsim.h"
 
-#define DECODE_JAKE			(0)
-#define DECODE_CRTSIM		(1)
-
-#define NTSC_COLOUR_CARRIER (3579545.0f)
-#define NTSC_SAMPLE_RATE (NTSC_COLOUR_CARRIER*4.0f)
-
-#define	NTSC_Y_LPF_CUTOFF (3.0f*1000.0f*1000.0f)
-
-const char* const DISPLAY_MODES[] = {
-	"RGB",
-	"Y_SIGNAL",
-	"CHROMA_SIGNAL",
-	"I_SIGNAL",
-	"Q_SIGNAL",
-	"RAW SIGNAL",
-	"RED CHANNEL",
-	"GREEN CHANNEL",
-	"BLUE CHANNEL",
-	"INVALID"
-	};
-
-const char* const DISPLAY_FLAGS[] = {
-	"INTERLACED"
-	"INVALID"
-	};
-
-static float s_LPFY_inSignal[3];
-static float s_LPFY_outY[3];
-static float s_LPFY_a[3];
-static float s_LPFY_b[2];
-static float s_CHROMA_T = 0.0f;
-static int s_displayModeFlags = DISPLAY_RGB | (DISPLAY_INTERLACED << 16);
-static unsigned int* s_pVideoMemoryBGRA = NULL;
-static int s_pixelPos = 0;
-static int s_xpos = 0;
-static int s_ypos = 0;
-static int s_decodeOption = DECODE_JAKE;
-
-static int s_syncSamples = 0;
-static int s_blankSamples = 0;
-
-static int s_sampleCounter = 0;
-static int s_samplesPerField = 0;
-
-static int s_fieldCounter = 0;
-
-static int s_vsyncFound = 0;
-static int s_hsyncFound = 0;
-static int s_colourBurstFound = 0;
-
-static int s_contrast = (256*3)/2;
-static int s_brightness = 0;
+#define NTSC_GAMMA (2.2f)
 
 /* Sample values (/4 compared to NTSC reference levels because 8-bit instead of 10-bit */
 /* Sync = 4, Blank = 60, Black = 70, White = 200 */
@@ -71,6 +20,14 @@ static int s_brightness = 0;
 #define NTSC_COLOUR_BURST_START_SAMPLE (14)
 #define NTSC_COLOUR_BURST_LENGTH_SAMPLE (4*9)
 #define NTSC_BLANKING_SAMPLES (NTSC_COLOUR_BURST_START_SAMPLE+NTSC_COLOUR_BURST_LENGTH_SAMPLE+8)
+
+#define DECODE_JAKE			(0)
+#define DECODE_CRTSIM		(1)
+
+#define NTSC_COLOUR_CARRIER (3579545.0f)
+#define NTSC_SAMPLE_RATE (NTSC_COLOUR_CARRIER*4.0f)
+
+#define	NTSC_Y_LPF_CUTOFF (3.0f*1000.0f*1000.0f)
 
 /*
 	HSYNC
@@ -109,6 +66,52 @@ D = cos(at+b)*sin(at) = sin(at)*cos(at)*cos(b)-sin(at)*sin(at)*sin(b)
 C - D = sin(b)
 
 */
+
+static int s_decodeOption = DECODE_JAKE;
+static int s_displayModeFlags = DISPLAY_RGB | (DISPLAY_INTERLACED << 16);
+static unsigned int* s_pVideoMemoryBGRA = NULL;
+
+static float s_CHROMA_T = 0.0f;
+static int s_pixelPos = 0;
+static int s_xpos = 0;
+static int s_ypos = 0;
+static int s_colourBurstTotal = 0;
+static float s_colourBurstAvg = 0.0f;
+
+static int s_syncSamples = 0;
+static int s_blankSamples = 0;
+
+static int s_sampleCounter = 0;
+static int s_samplesPerField = 0;
+
+static int s_fieldCounter = 0;
+
+static int s_vsyncFound = 0;
+static int s_hsyncFound = 0;
+static int s_colourBurstFound = 0;
+
+static int s_contrast = (256*12)/10;
+static int s_brightness = 0;
+
+static float s_gammaValue = NTSC_GAMMA;
+
+static const char* const DISPLAY_MODES[] = {
+	"RGB",
+	"Y_SIGNAL",
+	"CHROMA_SIGNAL",
+	"I_SIGNAL",
+	"Q_SIGNAL",
+	"RAW SIGNAL",
+	"RED CHANNEL",
+	"GREEN CHANNEL",
+	"BLUE CHANNEL",
+	"INVALID"
+	};
+
+static const char* const DISPLAY_FLAGS[] = {
+	"INTERLACED"
+	"INVALID"
+	};
 
 /*
 Y = LPF2(video)
@@ -182,6 +185,20 @@ Lowpass:
       b2 = ( 1.0 - r * c + c * c) * a1;
 */
 
+static float s_LPFY_inSignal[3];
+static float s_LPFY_outY[3];
+static float s_LPFY_a[3];
+static float s_LPFY_b[2];
+
+static int s_yLPF[7];
+static int s_iLPF[7];
+static int s_qLPF[7];
+
+static int s_jakeI = 0;
+static float s_jakeVals[4];
+
+static int s_gamma[256];
+
 static void computeLowPassCoeffs(float a[3], float b[2], const float freq, const float sample_rate)
 {
 	const float r = 1.000f;
@@ -200,8 +217,6 @@ static void lowPass( const float a[3], const float b[2], const float* const pSam
 	/* out(n) = a1 * in + a2 * in(n-1) + a3 * in(n-2) - b1*out(n-1) - b2*out(n-2) */
 	pOutput[2] = a[0]*pSamples[2] + a[1]*pSamples[1] + a[2]*pSamples[0] - b[0]*pOutput[1] - b[1]*pOutput[0];
 }
-
-static int s_yLPF[7];
 
 static void decodeSignalY(const int compositeSignal, int* outY)
 {
@@ -231,14 +246,6 @@ static void decodeSignalY(const int compositeSignal, int* outY)
 
 	*outY = Y;
 }
-
-static int s_iLPF[7];
-static int s_qLPF[7];
-static int s_jakeI = 0;
-static float s_jakeVals[4];
-static int s_gamma[256];
-#define NTSC_GAMMA (2.2f)
-static float s_gammaValue = NTSC_GAMMA;
 
 static void decodeSignalIQ(const int compositeSignal, int* outI, int* outQ)
 {
@@ -433,8 +440,6 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		/* It is about ~1.0us after the HSYNC pulse ends which is 11 samples */
 		if ((s_hsyncFound == 1) && (s_colourBurstFound == 0))
 		{
-			static int s_colourBurstTotal = 0;
-			static float s_colourBurstAvg = 0.0f;
 			const int colourBurstStart = NTSC_COLOUR_BURST_START_SAMPLE;
 			const int colourBurstEnd = colourBurstStart + NTSC_COLOUR_BURST_LENGTH_SAMPLE;
 			const int colourBurstLookStart = colourBurstStart + 8;
@@ -452,7 +457,9 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			if (s_sampleCounter > colourBurstLookEnd)
 			{
 				s_colourBurstAvg = (float)s_colourBurstTotal / (float)((colourBurstLookEnd-colourBurstLookStart)+1);
+				/*
 				printf("y:%d colourBurstTotal:%d avg:%f\n", s_ypos, s_colourBurstTotal, s_colourBurstAvg);
+				*/
 				s_colourBurstFound = 1;
 			}
 		}
@@ -489,7 +496,9 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		if ((vsyncFound == 1) && (s_vsyncFound == 0))
 		{
 			/* VSYNC */
+			/*
 			printf("VSYNC x:%d y:%d syncSamples:%d samples:%d\n", s_xpos, s_ypos, s_syncSamples, s_samplesPerField);
+			*/
 			s_fieldCounter++;
 			s_ypos = s_fieldCounter & 0x1;
 			if (displayFlags & DISPLAY_INTERLACED)
@@ -500,9 +509,12 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 				s_ypos *= 262;
 			}
 			pixelPos = s_ypos * NTSC_SAMPLES_PER_LINE;
+			/*
 			printf("VSYNC newy:%d\n", s_ypos);
+			*/
 			s_samplesPerField = 0;
 			s_vsyncFound = 1;
+			s_jakeI = s_fieldCounter & 0x1 ? 3 : 3;
 		}
 
 		if (s_blankSamples >= 4)
@@ -510,10 +522,6 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			blankSignal = 1;
 		}
 
-		if ((s_xpos == 0) && (s_ypos == 0))
-		{
-			s_jakeI = 3;
-		}
 
 		if (blankSignal == 0)
 		{
