@@ -53,6 +53,8 @@ static int s_fieldCounter = 0;
 
 static int s_vsyncFound = 0;
 static int s_hsyncFound = 0;
+static int s_colourBurstFound = 0;
+
 static int s_contrast = (256*3)/2;
 static int s_brightness = 0;
 
@@ -62,6 +64,13 @@ static int s_brightness = 0;
 #define NTSC_VALUE_BLANK	(60)
 #define NTSC_VALUE_BLACK	(70)
 #define NTSC_VALUE_WHITE	(200)
+
+#define NTSC_VALUE_COLOUR_BURST_MIN		(28)
+#define NTSC_VALUE_COLOUR_BURST_MAX		(88)
+
+#define NTSC_COLOUR_BURST_START_SAMPLE (14)
+#define NTSC_COLOUR_BURST_LENGTH_SAMPLE (4*9)
+#define NTSC_BLANKING_SAMPLES (NTSC_COLOUR_BURST_START_SAMPLE+NTSC_COLOUR_BURST_LENGTH_SAMPLE+8)
 
 /*
 	HSYNC
@@ -80,7 +89,26 @@ Each long sync pulse consists in an equalizing pulse with timings inverted: 30 Â
 0.3V = BLANK
 */
 
-/* NEED TO CONSIDER BACK & FRONT PORCH - for hsync detection */
+/* DO WE NEED TO CONSIDER BACK & FRONT PORCH - for hsync detection */
+/* BACK PORCH is where colour burst is */
+
+/* COLOUR BURST */
+/*
+burst signal = sin(at+b)
+	Trying to find b have N samples of sin(at+b) and sin(at)
+	Each sample is 90 deg apart
+
+sin(at+b) = sin(at)*cos(b)+cos(at)*sin(b)
+cos(at+b) = cos(at)*cos(b)-sin(at)*sin(b)
+A = sin(at+b)*sin(at) = sin(at)*sin(at)*cos(b)+sin(at)*cos(at)*sin(b)
+B = cos(at+b)*cos(at) = cos(at)*cos(at)*cos(b)-sin(at)*cos(at)*sin(b)
+A + B = cos(b)
+
+C = sin(at+b)*cos(at) = cos(at)*sin(at)*cos(b)+cos(at)*cos(at)*sin(b)
+D = cos(at+b)*sin(at) = sin(at)*cos(at)*cos(b)-sin(at)*sin(at)*sin(b)
+C - D = sin(b)
+
+*/
 
 /*
 Y = LPF2(video)
@@ -330,6 +358,8 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 
 	s_vsyncFound = 0;
 	s_hsyncFound = 0;
+	s_colourBurstFound = 0;
+
 	computeGammaTable();
 }
 
@@ -399,6 +429,37 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		{
 			vsyncFound = 1;
 		}
+		/* Colour burst is 2.5us long which is 36 NTSC samples (9 waves) */
+		/* It is about ~1.0us after the HSYNC pulse ends which is 11 samples */
+		if ((s_hsyncFound == 1) && (s_colourBurstFound == 0))
+		{
+			static int s_colourBurstTotal = 0;
+			static float s_colourBurstAvg = 0.0f;
+			const int colourBurstStart = NTSC_COLOUR_BURST_START_SAMPLE;
+			const int colourBurstEnd = colourBurstStart + NTSC_COLOUR_BURST_LENGTH_SAMPLE;
+			const int colourBurstLookStart = colourBurstStart + 8;
+			const int colourBurstLookEnd = colourBurstEnd - 8;
+			if (s_sampleCounter < colourBurstLookStart)
+			{
+				s_colourBurstTotal = 0;
+				s_colourBurstAvg = 0.0f;
+			}
+			if ((s_sampleCounter >= colourBurstLookStart) && (s_sampleCounter < colourBurstLookEnd))
+			{
+				/* We are in the colour burst phase */
+				s_colourBurstTotal += compositeSignal;
+			}
+			if (s_sampleCounter > colourBurstLookEnd)
+			{
+				s_colourBurstAvg = (float)s_colourBurstTotal / (float)((colourBurstLookEnd-colourBurstLookStart)+1);
+				printf("y:%d colourBurstTotal:%d avg:%f\n", s_ypos, s_colourBurstTotal, s_colourBurstAvg);
+				s_colourBurstFound = 1;
+			}
+		}
+		if (s_sampleCounter < NTSC_BLANKING_SAMPLES)
+		{
+			blankSignal = 1;
+		}
 
 		if (hsyncFound == 1)
 		{
@@ -423,6 +484,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			}
 			pixelPos = s_ypos * NTSC_SAMPLES_PER_LINE;
 			s_hsyncFound = 1;
+			s_colourBurstFound = 0;
 		}
 		if ((vsyncFound == 1) && (s_vsyncFound == 0))
 		{
