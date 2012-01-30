@@ -633,6 +633,15 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		green = (unsigned int)clampInt((int)green, 0, 255);
 		blue = (unsigned int)clampInt((int)blue, 0, 255);
 
+		if (((s_ypos == 200) || (s_ypos == 500)) && ((s_xpos % 150) == 0))
+		{
+			if ((s_ypos > 0) && (s_xpos > 0))
+			{
+				/*
+				printf("y:%d RGB:%d, %d, %d\n", s_ypos, red, green, blue);
+				*/
+			}
+		}
 		/* BGRA format */
 		texture[pixelPos] = (unsigned int)((alpha<<24) | (red<<16) | (green<<8) | blue);
 
