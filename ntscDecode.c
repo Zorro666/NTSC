@@ -109,7 +109,8 @@ static const char* const DISPLAY_MODES[] = {
 	};
 
 static const char* const DISPLAY_FLAGS[] = {
-	"INTERLACED"
+	"INTERLACED",
+	"LEE MODE",
 	"INVALID"
 	};
 
@@ -514,7 +515,16 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			*/
 			s_samplesPerField = 0;
 			s_vsyncFound = 1;
-			s_jakeI = s_fieldCounter & 0x1 ? 3 : 3;
+			if (displayFlags & DISPLAY_LEE_MODE)
+			{
+				/* For NES - for Lee */
+				s_jakeI = s_fieldCounter & 0x1 ? 1 : 1;
+			}
+			else
+			{
+				/* For NTSC saved files */
+				s_jakeI = s_fieldCounter & 0x1 ? 0 : 1;
+			}
 		}
 
 		if (s_blankSamples >= 4)
@@ -522,22 +532,28 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			blankSignal = 1;
 		}
 
-
 		if (blankSignal == 0)
 		{
-			decodeSignalY(compositeSignal, &Y);
-			Y = (Y * 255)/200 + 00;
-			Y = (Y * s_contrast)/256;
-			Y = Y + s_brightness;
-			C = compositeSignal - Y;
-			decodeSignalIQ(compositeSignal, &I, &Q);
+			float yval;
+			float ival;
+			float qval;
+			decodeSignalY(compositeSignal, &yval);
+			yval = yval * (255.0f/200.0f);
+			yval = yval * s_contrast;
+			yval = yval + s_brightness;
+			C = compositeSignal - (int)yval;
+			decodeSignalIQ(compositeSignal, &ival, &qval);
 
-			R = (int)((float)Y + 0.9563f * (float)I/256.0f + 0.6210f * (float)Q/256.0f);
-			G = (int)((float)Y - 0.2721f * (float)I/256.0f - 0.6474f * (float)Q/256.0f);
-			B = (int)((float)Y - 1.1070f * (float)I/256.0f + 1.7406f * (float)Q/256.0f);
+			R = (int)((float)yval + 0.9563f * ival + 0.6210f * qval);
+			G = (int)((float)yval - 0.2721f * ival - 0.6474f * qval);
+			B = (int)((float)yval - 1.1070f * ival + 1.7406f * qval);
 			R = s_gamma[clampInt(R, 0, 255)];
 			G = s_gamma[clampInt(G, 0, 255)];
 			B = s_gamma[clampInt(B, 0, 255)];
+
+			Y = (int)yval;
+			I = (int)ival;
+			Q = (int)qval;
 		}
 		if (displayMode == DISPLAY_RGB)
 		{
@@ -707,6 +723,11 @@ void ntscDecodeTick(void)
 	{
 		windowClearKey('D');
 		displayFlags ^= (DISPLAY_INTERLACED);
+	}
+	if (windowCheckKey('L'))
+	{
+		windowClearKey('L');
+		displayFlags ^= (DISPLAY_LEE_MODE);
 	}
 	if (displayMode > DISPLAY_MAX)
 	{

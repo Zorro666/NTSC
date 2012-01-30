@@ -17,6 +17,7 @@
 #define DISPLAY_MAX 				(9)
 
 #define DISPLAY_INTERLACED	(1 << 0)
+#define DISPLAY_LEE_MODE		(1 << 1)
 
 void ntscDecodeInit(unsigned int* pVideoMemoryBGRA);
 void ntscDecodeAddSample(const unsigned char sampleValue);
