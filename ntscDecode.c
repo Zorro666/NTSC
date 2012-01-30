@@ -90,10 +90,10 @@ static int s_vsyncFound = 0;
 static int s_hsyncFound = 0;
 static int s_colourBurstFound = 0;
 
-static int s_contrast = (256*12)/10;
-static int s_brightness = 0;
+static float s_contrast = 1.65f;
+static float s_brightness = 0.0f;
 
-static float s_gammaValue = NTSC_GAMMA;
+static float s_gammaValue = 2.2f;
 
 static const char* const DISPLAY_MODES[] = {
 	"RGB",
@@ -191,9 +191,9 @@ static float s_LPFY_outY[3];
 static float s_LPFY_a[3];
 static float s_LPFY_b[2];
 
-static int s_yLPF[7];
-static int s_iLPF[7];
-static int s_qLPF[7];
+static float s_yLPF[7];
+static float s_iLPF[7];
+static float s_qLPF[7];
 
 static int s_jakeI = 0;
 static float s_jakeVals[4];
@@ -212,17 +212,20 @@ static void computeLowPassCoeffs(float a[3], float b[2], const float freq, const
 	b[1] = (1.0f - r*c + c*c) * a[0];
 }
 
+#if 0
 /* pSamples = input[n-2], pOutput = output[n-2] */
 static void lowPass( const float a[3], const float b[2], const float* const pSamples, float* const pOutput)
 {
 	/* out(n) = a1 * in + a2 * in(n-1) + a3 * in(n-2) - b1*out(n-1) - b2*out(n-2) */
 	pOutput[2] = a[0]*pSamples[2] + a[1]*pSamples[1] + a[2]*pSamples[0] - b[0]*pOutput[1] - b[1]*pOutput[0];
 }
+#endif
 
-static void decodeSignalY(const int compositeSignal, int* outY)
+static void decodeSignalY(const int compositeSignal, float* outY)
 {
-	int Y = 0;
+	float Y = 0;
 
+#if 0
 	/* Y = LPF(signal) : 6MHz low-pass */
 	s_LPFY_inSignal[0] = s_LPFY_inSignal[1];
 	s_LPFY_inSignal[1] = s_LPFY_inSignal[2];
@@ -232,6 +235,7 @@ static void decodeSignalY(const int compositeSignal, int* outY)
 	/* inSignal = n-2, n-1, n, outY = n-2, n-1, n */
 	lowPass(s_LPFY_a, s_LPFY_b, s_LPFY_inSignal, s_LPFY_outY);
 	Y = (int)s_LPFY_outY[2];
+#endif
 
 	s_yLPF[6] = s_yLPF[5];
 	s_yLPF[5] = s_yLPF[4];
@@ -239,23 +243,24 @@ static void decodeSignalY(const int compositeSignal, int* outY)
 	s_yLPF[3] = s_yLPF[2];
 	s_yLPF[2] = s_yLPF[1];
 	s_yLPF[1] = s_yLPF[0];
-	s_yLPF[0] = compositeSignal;
-	Y = (s_yLPF[6] + s_yLPF[0] + ((s_yLPF[5] + s_yLPF[1])<<2) + 7*(s_yLPF[4] + s_yLPF[2]) + (s_yLPF[3]<<3));
-	Y = Y / 32;
+	s_yLPF[0] = (float)compositeSignal;
+	Y = (float)(s_yLPF[6] + s_yLPF[0] + ((s_yLPF[5] + s_yLPF[1])*4.0f) + 7.0f*(s_yLPF[4] + s_yLPF[2]) + (s_yLPF[3]*8.0f));
+	Y = Y / 32.0f;
 
-	Y = clampInt(Y, 0, 255);
+	Y = clampFloat(Y, 0.0f, 200.0f);
 
 	*outY = Y;
 }
 
-static void decodeSignalIQ(const int compositeSignal, int* outI, int* outQ)
+static void decodeSignalIQ(const int compositeSignal, float* outI, float* outQ)
 {
-	int I = 0;
-	int Q = 0;
+	float I = 0;
+	float Q = 0;
 	float sinValue = 0;
 	float cosValue = 0;
 	float sinColourCarrier;
 	float cosColourCarrier;
+	const float IQscaling = 13.0f/100.0f;
 	float chromaValue = (float)compositeSignal;
 
 	/* demodulate chroma to I, Q */
@@ -279,8 +284,8 @@ static void decodeSignalIQ(const int compositeSignal, int* outI, int* outQ)
 	s_iLPF[3] = s_iLPF[2];
 	s_iLPF[2] = s_iLPF[1];
 	s_iLPF[1] = s_iLPF[0];
-	s_iLPF[0] = (int)sinValue * 32;
-	I = (s_iLPF[6] + s_iLPF[0] + ((s_iLPF[5] + s_iLPF[1])<<2) + 7*(s_iLPF[4] + s_iLPF[2]) + (s_iLPF[3]<<3));
+	s_iLPF[0] = sinValue;
+	I = (float)(s_iLPF[6] + s_iLPF[0] + ((s_iLPF[5] + s_iLPF[1])*4.0f) + 7.0f*(s_iLPF[4] + s_iLPF[2]) + (s_iLPF[3]*8.0f));
 
 	s_qLPF[6] = s_qLPF[5];
 	s_qLPF[5] = s_qLPF[4];
@@ -288,8 +293,11 @@ static void decodeSignalIQ(const int compositeSignal, int* outI, int* outQ)
 	s_qLPF[3] = s_qLPF[2];
 	s_qLPF[2] = s_qLPF[1];
 	s_qLPF[1] = s_qLPF[0];
-	s_qLPF[0] = (int)cosValue * 32;
-	Q = (s_qLPF[6] + s_qLPF[0] + ((s_qLPF[5] + s_qLPF[1])<<2) + 7*(s_qLPF[4] + s_qLPF[2]) + (s_qLPF[3]<<3));
+	s_qLPF[0] = cosValue;
+	Q = (float)(s_qLPF[6] + s_qLPF[0] + ((s_qLPF[5] + s_qLPF[1])*4.0f) + 7.0f*(s_qLPF[4] + s_qLPF[2]) + (s_qLPF[3]*8.0f));
+
+	I = I * IQscaling;
+	Q = Q * IQscaling;
 
 	*outI = I;
 	*outQ = Q;
@@ -305,9 +313,9 @@ static void lineInit(void)
 	}
 	for (i = 0; i < 7; i++)
 	{
-		s_yLPF[i] = 0;
-		s_iLPF[i] = 0;
-		s_qLPF[i] = 0;
+		s_yLPF[i] = 0.0f;
+		s_iLPF[i] = 0.0f;
+		s_qLPF[i] = 0.0f;
 	}
 	s_CHROMA_T = 0.0f;
  	s_CHROMA_T += (float)(M_PI / 180.0f) * 33.0f;
@@ -349,10 +357,10 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 	crtSimInit(pVideoMemoryBGRA);
 
 	s_jakeI = 0;
-	s_jakeVals[0] = -1.0f;
-	s_jakeVals[1] = -0.0f;
-	s_jakeVals[2] = +1.0f;
-	s_jakeVals[3] = +0.0f;
+	s_jakeVals[0] = +1.0f;
+	s_jakeVals[1] = +0.0f;
+	s_jakeVals[2] = -1.0f;
+	s_jakeVals[3] = -0.0f;
 
 	lineInit();
 
