@@ -216,6 +216,13 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 	{
 		total += pDecodeNTSC->_colorBurstPhase[i]*pDecodeNTSC->_colorBurstPhase[i];
 	}
+	/*
+	printf("offset:%d %f %f %f %f\n", offset,
+													pDecodeNTSC->_colorBurstPhase[0],
+													pDecodeNTSC->_colorBurstPhase[1],
+													pDecodeNTSC->_colorBurstPhase[2],
+													pDecodeNTSC->_colorBurstPhase[3]);
+	*/
 
 	colorBurstGain = 32.0f/sqrtf(total);
 	phaseCorrelation = (offset + pDecodeNTSC->_phase)&3;
@@ -300,6 +307,10 @@ static void decodeNTSCprocess(DecodeNTSC* const pDecodeNTSC, const int displayMo
 			iqMultipliers[1] = (int)((colorBurstQ*tintI + colorBurstI*tintQ)*pDecodeNTSC->_saturation*pDecodeNTSC->_contrast*colorBurstGain*0.352f);
 			iqMultipliers[2] = -iqMultipliers[0];
 			iqMultipliers[3] = -iqMultipliers[1];
+			/*
+			printf("burstI:%f burstQ:%f tintI:%f tintQ:%f iq:%d, %d\n", colorBurstI, colorBurstQ, tintI, tintQ, 
+						iqMultipliers[0], iqMultipliers[1]);
+			*/
 			p = &pDecodeNTSC->_delay[pDecodeNTSC->_maxSamplesPerLine];
 			for (x = 0; x < 19; ++x)
 			{
