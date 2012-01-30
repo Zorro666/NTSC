@@ -83,11 +83,13 @@ static int s_blankSamples = 0;
 
 static int s_sampleCounter = 0;
 static int s_samplesPerField = 0;
+static int s_ntscSamples = 0;
 
 static int s_fieldCounter = 0;
 
 static int s_vsyncFound = 0;
 static int s_hsyncFound = 0;
+static int s_hsyncPosition = 0;
 static int s_colourBurstFound = 0;
 
 static float s_contrast = 1.65f;
@@ -364,6 +366,8 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 
 	lineInit();
 
+	s_ntscSamples = 0;
+
 	s_syncSamples = 0;
 	s_blankSamples = 0;
 
@@ -374,6 +378,7 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 
 	s_vsyncFound = 0;
 	s_hsyncFound = 0;
+	s_hsyncPosition = 0;
 	s_colourBurstFound = 0;
 
 	computeGammaTable();
@@ -413,6 +418,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 
 		unsigned int* texture = s_pVideoMemoryBGRA;
 
+		s_ntscSamples++;
 		s_sampleCounter++;
 		s_samplesPerField++;
 		if (s_samplesPerField > 3000)
@@ -441,7 +447,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		{
 			hsyncFound = 1;
 		}
-		if ((s_syncSamples > 382) && (syncFound==0))
+		if ((s_syncSamples > 380) && (syncFound==0))
 		{
 			vsyncFound = 1;
 		}
@@ -485,6 +491,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			s_xpos = 0;
 			lineInit();
 
+			s_hsyncPosition = s_samplesPerField;
 			s_sampleCounter = 0;
 			if (displayFlags & DISPLAY_INTERLACED)
 			{
