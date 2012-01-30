@@ -17,7 +17,7 @@
 #define NTSC_VALUE_COLOUR_BURST_MIN		(28)
 #define NTSC_VALUE_COLOUR_BURST_MAX		(88)
 
-#define NTSC_COLOUR_BURST_START_SAMPLE (14)
+#define NTSC_COLOUR_BURST_START_SAMPLE (12)
 #define NTSC_COLOUR_BURST_LENGTH_SAMPLE (4*9)
 #define NTSC_BLANKING_SAMPLES (NTSC_COLOUR_BURST_START_SAMPLE+NTSC_COLOUR_BURST_LENGTH_SAMPLE+8)
 
@@ -60,10 +60,14 @@ cos(at+b) = cos(at)*cos(b)-sin(at)*sin(b)
 A = sin(at+b)*sin(at) = sin(at)*sin(at)*cos(b)+sin(at)*cos(at)*sin(b)
 B = cos(at+b)*cos(at) = cos(at)*cos(at)*cos(b)-sin(at)*cos(at)*sin(b)
 A + B = cos(b)
+A = colour_burst_sample[0] * sin_colour_carrier
+B = colour_burst_sample[1] * cos_colour_carrier
 
 C = sin(at+b)*cos(at) = cos(at)*sin(at)*cos(b)+cos(at)*cos(at)*sin(b)
 D = cos(at+b)*sin(at) = sin(at)*cos(at)*cos(b)-sin(at)*sin(at)*sin(b)
 C - D = sin(b)
+C = colour_burst_sample[2] * cos_colour_carrier
+D = colour_burst_sample[3] * sin_colour_carrier
 
 */
 
@@ -76,6 +80,7 @@ static int s_pixelPos = 0;
 static int s_xpos = 0;
 static int s_ypos = 0;
 static int s_colourBurstTotal = 0;
+static float s_colourBurstSamples[4];
 static float s_colourBurstAvg = 0.0f;
 
 static int s_syncSamples = 0;
@@ -455,6 +460,8 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		/* It is about ~1.0us after the HSYNC pulse ends which is 11 samples */
 		if ((s_hsyncFound == 1) && (s_colourBurstFound == 0))
 		{
+			static int sampleAtStart = 0;
+			static int sampleAtStart2 = 0;
 			const int colourBurstStart = NTSC_COLOUR_BURST_START_SAMPLE;
 			const int colourBurstEnd = colourBurstStart + NTSC_COLOUR_BURST_LENGTH_SAMPLE;
 			const int colourBurstLookStart = colourBurstStart + 8;
@@ -463,18 +470,68 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			{
 				s_colourBurstTotal = 0;
 				s_colourBurstAvg = 0.0f;
+				s_colourBurstSamples[0] = 0.0f;
+				s_colourBurstSamples[1] = 0.0f;
+				s_colourBurstSamples[2] = 0.0f;
+				s_colourBurstSamples[3] = 0.0f;
+				sampleAtStart = s_ntscSamples;
+				sampleAtStart2 = s_sampleCounter;
 			}
 			if ((s_sampleCounter >= colourBurstLookStart) && (s_sampleCounter < colourBurstLookEnd))
 			{
+				int burstSampleIndex = (s_samplesPerField ) & 0x3;
+				burstSampleIndex = (s_hsyncPosition + s_sampleCounter) & 0x3;
+
+				burstSampleIndex = (s_sampleCounter - colourBurstLookStart);
+				burstSampleIndex += 0*s_hsyncPosition;
+				burstSampleIndex += sampleAtStart;
+				burstSampleIndex += 0*sampleAtStart2;
+
+				burstSampleIndex &= 0x3;
 				/* We are in the colour burst phase */
-				s_colourBurstTotal += compositeSignal;
+				s_colourBurstTotal += (compositeSignal*compositeSignal);
+				s_colourBurstSamples[burstSampleIndex] = s_colourBurstSamples[burstSampleIndex] * 0.9f + 0.1f*(float)compositeSignal;
 			}
-			if (s_sampleCounter > colourBurstLookEnd)
+			if (s_sampleCounter >= colourBurstLookEnd)
 			{
-				s_colourBurstAvg = (float)s_colourBurstTotal / (float)((colourBurstLookEnd-colourBurstLookStart)+1);
+				float bI;
+				float bQ;
+			float tintI = (float)sinf(33.0f * (float)M_PI/180.0f);
+			float tintQ = (float)cosf(33.0f * (float)M_PI/180.0f);
+				const int numSamples = (colourBurstLookEnd-colourBurstLookStart);
+				s_colourBurstSamples[0] /= (float)(numSamples/4);
+				s_colourBurstSamples[1] /= (float)(numSamples/4);
+				s_colourBurstSamples[2] /= (float)(numSamples/4);
+				s_colourBurstSamples[3] /= (float)(numSamples/4);
+				s_colourBurstAvg = (float)sqrtf((float)s_colourBurstTotal) / (float)(numSamples);
+
+				bI = s_colourBurstSamples[2]-s_colourBurstSamples[0]; 
+				bQ = s_colourBurstSamples[3]-s_colourBurstSamples[1];
+				bI /= s_colourBurstAvg;
+				bQ /= s_colourBurstAvg;
 				/*
 				printf("y:%d colourBurstTotal:%d avg:%f\n", s_ypos, s_colourBurstTotal, s_colourBurstAvg);
 				*/
+				/*
+C = sin(at+b)*cos(at) = cos(at)*sin(at)*cos(b)+cos(at)*cos(at)*sin(b)
+D = cos(at+b)*sin(at) = sin(at)*cos(at)*cos(b)-sin(at)*sin(at)*sin(b)
+C - D = sin(b)
+C = colour_burst_sample[2] * cos_colour_carrier
+D = colour_burst_sample[3] * sin_colour_carrier
+
+the colour burst looks to be sin(-33 deg + omega*t)
+*/
+				printf("jI:%d h:%d sam:%d sam2:%d y:%d n:%d a:%f burstSamples:%.3ff, %.3ff, %.3ff, %.3f\n", 
+						s_jakeI&0x3, s_hsyncPosition&0x3, sampleAtStart&0x3, sampleAtStart2&0x3,
+						s_ypos, 
+						numSamples,
+						s_colourBurstAvg,
+						s_colourBurstSamples[0], s_colourBurstSamples[1], s_colourBurstSamples[2], s_colourBurstSamples[3]
+						);
+				printf("tintI:%f tintQ:%f bI:%f bQ:%f vals:%f, %f\n", 
+						tintI, tintQ, bI, bQ, 
+						(bI * tintQ + bQ * tintI),
+						(bI * tintI - bQ * tintQ));
 				s_colourBurstFound = 1;
 			}
 		}
