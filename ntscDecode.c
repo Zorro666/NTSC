@@ -494,25 +494,27 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			}
 			if (s_sampleCounter >= colourBurstLookEnd)
 			{
-				float bI;
-				float bQ;
-			float tintI = (float)sinf(33.0f * (float)M_PI/180.0f);
-			float tintQ = (float)cosf(33.0f * (float)M_PI/180.0f);
-				const int numSamples = (colourBurstLookEnd-colourBurstLookStart);
-				s_colourBurstSamples[0] /= (float)(numSamples/4);
-				s_colourBurstSamples[1] /= (float)(numSamples/4);
-				s_colourBurstSamples[2] /= (float)(numSamples/4);
-				s_colourBurstSamples[3] /= (float)(numSamples/4);
-				s_colourBurstAvg = (float)sqrtf((float)s_colourBurstTotal) / (float)(numSamples);
+				if (s_colourBurstTotal > 1)
+				{
+					float bI;
+					float bQ;
+					float sinC = (float)sinf(33.0f * (float)M_PI/180.0f);
+					float cosC = (float)cosf(33.0f * (float)M_PI/180.0f);
+					const int numSamples = (colourBurstLookEnd-colourBurstLookStart);
+					s_colourBurstSamples[0] /= (float)(numSamples/4);
+					s_colourBurstSamples[1] /= (float)(numSamples/4);
+					s_colourBurstSamples[2] /= (float)(numSamples/4);
+					s_colourBurstSamples[3] /= (float)(numSamples/4);
+					s_colourBurstAvg = (float)sqrtf((float)s_colourBurstTotal) / (float)(numSamples);
 
-				bI = s_colourBurstSamples[2]-s_colourBurstSamples[0]; 
-				bQ = s_colourBurstSamples[3]-s_colourBurstSamples[1];
-				bI /= s_colourBurstAvg;
-				bQ /= s_colourBurstAvg;
-				/*
-				printf("y:%d colourBurstTotal:%d avg:%f\n", s_ypos, s_colourBurstTotal, s_colourBurstAvg);
-				*/
-				/*
+					bI = s_colourBurstSamples[2]-s_colourBurstSamples[0]; 
+					bQ = s_colourBurstSamples[3]-s_colourBurstSamples[1];
+					bI /= s_colourBurstAvg;
+					bQ /= s_colourBurstAvg;
+					/*
+				 	printf("y:%d colourBurstTotal:%d avg:%f\n", s_ypos, s_colourBurstTotal, s_colourBurstAvg);
+					*/
+/*
 C = sin(at+b)*cos(at) = cos(at)*sin(at)*cos(b)+cos(at)*cos(at)*sin(b)
 D = cos(at+b)*sin(at) = sin(at)*cos(at)*cos(b)-sin(at)*sin(at)*sin(b)
 C - D = sin(b)
@@ -521,17 +523,27 @@ D = colour_burst_sample[3] * sin_colour_carrier
 
 the colour burst looks to be sin(-33 deg + omega*t)
 */
-				printf("jI:%d h:%d sam:%d sam2:%d y:%d n:%d a:%f burstSamples:%.3ff, %.3ff, %.3ff, %.3f\n", 
-						s_jakeI&0x3, s_hsyncPosition&0x3, sampleAtStart&0x3, sampleAtStart2&0x3,
-						s_ypos, 
-						numSamples,
-						s_colourBurstAvg,
-						s_colourBurstSamples[0], s_colourBurstSamples[1], s_colourBurstSamples[2], s_colourBurstSamples[3]
-						);
-				printf("tintI:%f tintQ:%f bI:%f bQ:%f vals:%f, %f\n", 
-						tintI, tintQ, bI, bQ, 
-						(bI * tintQ + bQ * tintI),
-						(bI * tintI - bQ * tintQ));
+					printf("jI:%d h:%d sam:%d sam2:%d y:%d n:%d a:%f burstSamples:%.3ff, %.3ff, %.3ff, %.3f\n", 
+							s_jakeI&0x3, s_hsyncPosition&0x3, sampleAtStart&0x3, sampleAtStart2&0x3,
+							s_ypos, 
+							numSamples,
+							s_colourBurstAvg,
+							s_colourBurstSamples[0], s_colourBurstSamples[1], s_colourBurstSamples[2], s_colourBurstSamples[3]
+							);
+					printf("sinC:%f cosC:%f bI:%f bQ:%f vals:%f, %f\n", 
+							sinC, cosC, bI, bQ, 
+							(bI * cosC + bQ * sinC),
+							(bI * sinC - bQ * cosC));
+
+					s_jakeVals[0] = bI * sinC - bQ * cosC;
+					s_jakeVals[1] = bI * cosC + bQ * sinC;
+					s_jakeVals[2] = -s_jakeVals[0];
+					s_jakeVals[3] = -s_jakeVals[1];
+				}
+				else
+				{
+					printf("Monochrome line - no colour burst y:%d\n", s_ypos);
+				}
 				s_colourBurstFound = 1;
 			}
 		}
@@ -595,7 +607,7 @@ the colour burst looks to be sin(-33 deg + omega*t)
 			else
 			{
 				/* For NTSC saved files */
-				s_jakeI = s_fieldCounter & 0x1 ? 0 : 1;
+				/*s_jakeI = s_fieldCounter & 0x1 ? 0 : 1;*/
 			}
 		}
 
@@ -607,14 +619,17 @@ the colour burst looks to be sin(-33 deg + omega*t)
 		if (blankSignal == 0)
 		{
 			float yval;
-			float ival;
-			float qval;
+			float ival = 0.0f;
+			float qval = 0.0f;
 			decodeSignalY(compositeSignal, &yval);
 			yval = yval * (255.0f/200.0f);
 			yval = yval * s_contrast;
 			yval = yval + s_brightness;
-			C = compositeSignal - (int)yval;
-			decodeSignalIQ(compositeSignal, &ival, &qval);
+			if (s_colourBurstTotal > 1)
+			{
+				C = compositeSignal - (int)yval;
+				decodeSignalIQ(compositeSignal, &ival, &qval);
+			}
 
 			R = (int)((float)yval + 0.9563f * ival + 0.6210f * qval);
 			G = (int)((float)yval - 0.2721f * ival - 0.6474f * qval);
