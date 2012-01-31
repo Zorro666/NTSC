@@ -267,7 +267,7 @@ static void decodeSignalIQ(const int compositeSignal, float* outI, float* outQ)
 	float cosValue = 0;
 	float sinColourCarrier;
 	float cosColourCarrier;
-	const float IQscaling = 13.0f/100.0f;
+	const float IQscaling = 5.0f/100.0f;
 	float chromaValue = (float)compositeSignal;
 
 	/* demodulate chroma to I, Q */
@@ -490,7 +490,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 				burstSampleIndex &= 0x3;
 				/* We are in the colour burst phase */
 				s_colourBurstTotal += (compositeSignal*compositeSignal);
-				s_colourBurstSamples[burstSampleIndex] = s_colourBurstSamples[burstSampleIndex] * 0.9f + 0.1f*(float)compositeSignal;
+				s_colourBurstSamples[burstSampleIndex] = s_colourBurstSamples[burstSampleIndex] * 0.5f + 0.5f*(float)compositeSignal;
 			}
 			if (s_sampleCounter >= colourBurstLookEnd)
 			{
