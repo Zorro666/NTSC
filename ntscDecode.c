@@ -683,14 +683,14 @@ the colour burst looks to be sin(-33 deg + omega*t)
 		else if (displayMode == DISPLAY_I)
 		{
 			/*printf("I:%d Q:%d\n", I, Q);*/
-			I = 128+(clampInt(I, -128<<8, 128<<8) >> 8);
+			I = 128+(clampInt(I, -128<<1, 128<<1) >> 1);
 			red = (unsigned int)I;
 			green = (unsigned int)I;
 			blue = (unsigned int)I;
 		}
 		else if (displayMode == DISPLAY_Q)
 		{
-			Q = 128+(clampInt(Q, -128<<8, 128<<8) >> 8);
+			Q = 128+(clampInt(Q, -128<<1, 128<<1) >> 1);
 			red = (unsigned int)Q;
 			green = (unsigned int)Q;
 			blue = (unsigned int)Q;
