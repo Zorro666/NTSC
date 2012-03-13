@@ -97,10 +97,10 @@ static int s_hsyncFound = 0;
 static int s_hsyncPosition = 0;
 static int s_colourBurstFound = 0;
 
-static float s_contrast = 1.65f;
+static float s_contrast = 1.00f;
 static float s_brightness = 0.0f;
 
-static float s_gammaValue = 2.2f;
+static float s_gammaValue = 0.5f;
 
 static const char* const DISPLAY_MODES[] = {
 	"RGB",
@@ -339,6 +339,80 @@ static void computeGammaTable(void)
 	}
 }
 
+/* SVD: A  = U x E x V* */
+/* in: a = A */
+/* out: a = U, w = E, v = V* */
+extern int svd_decompose(float** a, unsigned int m, unsigned int n, float* w, float** v);
+
+void computeColourBurstMatrices(void)
+{
+	const unsigned int M = 4;
+	const unsigned int N = 2;
+
+	unsigned int i;
+	unsigned int j;
+	int result;
+
+	float* w;
+	float** v;
+	float** a;
+
+	a = malloc(sizeof(float*)*M);
+	v = malloc(sizeof(float*)*N);
+	for (i = 0; i < M; i++)
+	{
+		a[i] = malloc(sizeof(float)*N);
+	}
+	for (j = 0; j < N; j++)
+	{
+		v[j] = malloc(sizeof(float)*M);
+	}
+	for (i = 0; i < M; i++)
+	{
+		const float angle = (33.0f + ((float)(i+0)*90.0f)) * (float)M_PI/180.0f;
+		const float sinC = (float)sinf(angle);
+		const float cosC = (float)cosf(angle);
+		a[i][0] = sinC;
+		a[i][1] = cosC;
+	}
+
+	for (i = 0; i < M; i++)
+	{
+		for (j = 0; j < N; j++)
+		{
+			printf("a[%d][%d] = %f ", i, j, a[i][j]);
+		}
+		printf("\n");
+	}
+	w = malloc(sizeof(float)*N);
+	result = svd_decompose(a, M, N, w, v);
+
+	printf("result = %d\n", result);
+	for (i = 0; i < M; i++)
+	{
+		for (j = 0; j < N; j++)
+		{
+			printf("a[%d][%d] = %f ", i, j, a[i][j]);
+		}
+		printf("\n");
+	}
+	for (j = 0; j < N; j++)
+	{
+		printf("w[%d] = %f\n", j, w[j]);
+	}
+	for (i = 0; i < N; i++)
+	{
+		for (j = 0; j < M; j++)
+		{
+			printf("v[%d][%d] = %f ", i, j, v[i][j]);
+		}
+		printf("\n");
+	}
+	/* SVD: A  = U x E x V* */
+	/* out: a = U, w = E, v = V* */
+	/*v[i][j]*/
+}
+
 /* Public API */
 void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 {
@@ -353,6 +427,8 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 	s_ypos = 0;
 	s_pixelPos = 0;
 
+	computeColourBurstMatrices();
+
 	computeLowPassCoeffs(s_LPFY_a, s_LPFY_b, NTSC_Y_LPF_CUTOFF, NTSC_SAMPLE_RATE);
 	printf("LPFY coeffs\n");
 	printf("a[0]:%f a[1]:%f a[2]:%f b[0]:%f b[1]:%f\n", s_LPFY_a[0], s_LPFY_a[1], s_LPFY_a[2], s_LPFY_b[0], s_LPFY_b[1]);
@@ -364,9 +440,9 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 	crtSimInit(pVideoMemoryBGRA);
 
 	s_jakeI = 0;
-	s_jakeVals[0] = +1.0f;
+	s_jakeVals[0] = +0.0f;
 	s_jakeVals[1] = +0.0f;
-	s_jakeVals[2] = -1.0f;
+	s_jakeVals[2] = -0.0f;
 	s_jakeVals[3] = -0.0f;
 
 	lineInit();
@@ -520,9 +596,20 @@ D = cos(at+b)*sin(at) = sin(at)*cos(at)*cos(b)-sin(at)*sin(at)*sin(b)
 C - D = sin(b)
 C = colour_burst_sample[2] * cos_colour_carrier
 D = colour_burst_sample[3] * sin_colour_carrier
+bI = sin(at+b)
+bQ = cos(at+b)
 
 the colour burst looks to be sin(-33 deg + omega*t)
+colour burst is 33 deg relative to Q
+
+A good glossary and information place:
+http://techpubs.sgi.com/library/dynaweb_docs/0530/SGI_Developer/books/Ind2Vid_PG/sgi_html/go01.html
+
+cos(at+b) = (sin(180+at+b)-sin(at+b))*sin_colour_carrier - (cos(at+b+180)-cos(at+b))*cos_colour_carrier
+cos(at+b) = sin(180+at+b)*sin_colour_carrier - cos(at+b+180)*cos_colour_carrier -
+          = sin(at+b)*sin_colour_carrier - cos(at+b)*cos_colour_carrier
 */
+					/*
 					printf("jI:%d h:%d sam:%d sam2:%d y:%d n:%d a:%f burstSamples:%.3ff, %.3ff, %.3ff, %.3f\n", 
 							s_jakeI&0x3, s_hsyncPosition&0x3, sampleAtStart&0x3, sampleAtStart2&0x3,
 							s_ypos, 
@@ -530,10 +617,13 @@ the colour burst looks to be sin(-33 deg + omega*t)
 							s_colourBurstAvg,
 							s_colourBurstSamples[0], s_colourBurstSamples[1], s_colourBurstSamples[2], s_colourBurstSamples[3]
 							);
+					*/
+					/*
 					printf("sinC:%f cosC:%f bI:%f bQ:%f vals:%f, %f\n", 
 							sinC, cosC, bI, bQ, 
 							(bI * cosC + bQ * sinC),
 							(bI * sinC - bQ * cosC));
+					*/
 
 					s_jakeVals[0] = bI * sinC - bQ * cosC;
 					s_jakeVals[1] = bI * cosC + bQ * sinC;
@@ -705,12 +795,13 @@ the colour burst looks to be sin(-33 deg + omega*t)
 		green = (unsigned int)clampInt((int)green, 0, 255);
 		blue = (unsigned int)clampInt((int)blue, 0, 255);
 
-		if (((s_ypos == 200) || (s_ypos == 500)) && ((s_xpos % 150) == 0))
+		if (((s_ypos == 200) || (s_ypos == 201)) && (s_xpos == 150))
 		{
 			if ((s_ypos > 0) && (s_xpos > 0))
 			{
 				/*
-				printf("y:%d RGB:%d, %d, %d\n", s_ypos, red, green, blue);
+				printf("x:%d y:%d RGB:%d, %d, %d Value:%d Y:%d C:%d I:%d Q:%d\n", 
+						s_xpos, s_ypos, red, green, blue, sampleValue, Y, C, I, Q);
 				*/
 			}
 		}
