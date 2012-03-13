@@ -63,8 +63,10 @@ static float svd_pythag(float a, float b)
 	return(result);
 }
 
-int svd_decompose(float** a, int m, int n, float* w, float** v)
+int svd_decompose(float** a, unsigned int M, unsigned int N, float* w, float** v)
 {
+	const int m = (int)M;
+	const int n = (int)N;
 	int flag, i, its, j, jj, k, l, nm;
 	float c, f, h, s, x, y, z;
 	float anorm = 0.0f, g = 0.0f, scale = 0.0f;
