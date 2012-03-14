@@ -347,6 +347,7 @@ static void computeGammaTable(void)
 /* in: a = A */
 /* out: a = U, w = E, v = V* */
 extern int svd_decompose(float** a, unsigned int m, unsigned int n, float* w, float** v);
+extern int svd(int m,int n,int withu,int withv,float eps,float tol, float **a,float *q,float **u,float **v);
 
 static void matrixPrintf(float** mat, unsigned int numRows, unsigned int numCols, const char* const name)
 {
@@ -408,6 +409,8 @@ void computeColourBurstMatrices(void)
 	float** jakeTemp2;
 	float** jakeTemp3;
 
+	float temp;
+
 	unsigned int i;
 	unsigned int j;
 	int result;
@@ -415,14 +418,16 @@ void computeColourBurstMatrices(void)
 	float* w;
 	float** v;
 	float** a;
+	float** u;
 
-	a = matrixMalloc(M, M);
-	v = matrixMalloc(N, N);
-	w = malloc(sizeof(float)*M);
+	a = matrixMalloc(4, 4);
+	u = matrixMalloc(4, 4);
+	v = matrixMalloc(4, 4);
+	w = malloc(sizeof(float)*4);
 
-	jakeTemp1 = matrixMalloc(M, M);
-	jakeTemp2 = matrixMalloc(M, M);
-	jakeTemp3 = matrixMalloc(M, M);
+	jakeTemp1 = matrixMalloc(4, 4);
+	jakeTemp2 = matrixMalloc(4, 4);
+	jakeTemp3 = matrixMalloc(4, 4);
 	for (i = 0; i < M; i++)
 	{
 		const float angle = (33.0f + ((float)(i+0)*90.0f)) * (float)M_PI/180.0f;
@@ -431,21 +436,39 @@ void computeColourBurstMatrices(void)
 		a[i][0] = sinC;
 		a[i][1] = cosC;
 	}
+	a[0][0] = 2.0f;
+	a[0][1] = 1.0f;
+	a[0][2] = 0.0f;
+	a[0][3] = 0.0f;
+	a[1][0] = 4.0f;
+	a[1][1] = 3.0f;
+	a[1][2] = 0.0f;
+	a[1][3] = 0.0f;
+	a[2][0] = 0.0f;
+	a[2][1] = 0.0f;
+	a[2][2] = 0.0f;
+	a[2][3] = 0.0f;
+	a[3][0] = 0.0f;
+	a[3][1] = 0.0f;
+	a[3][2] = 0.0f;
+	a[3][3] = 0.0f;
 
 	printf("Input\n");
-	matrixPrintf(a, M, N, "a");
+	matrixPrintf(a, N, N, "a");
 
-	result = svd_decompose(a, M, N, w, v);
+	result = svd_decompose(a, 2, 2, w, v);
+	/*result = svd(2, 2, 1, 1, 1.0e-10f, 1.0e-10f, a, w, u, v);*/
 
 	printf("SVD\n");
 	printf("result = %d\n", result);
 
-	matrixPrintf(a, M, M, "a");
-	for (j = 0; j < M; j++)
+	matrixPrintf(a, 2, 2, "a");
+	matrixPrintf(u, 2, 2, "u");
+	for (j = 0; j < 2; j++)
 	{
 		printf("w[%d] = %f\n", j, w[j]);
 	}
-	matrixPrintf(v, N, N, "v");
+	matrixPrintf(v, 2, 2, "v");
 
 	/* SVD: A  = U x E x V* */
 	/* out: a = U, w = E, v = V* */
@@ -453,9 +476,9 @@ void computeColourBurstMatrices(void)
 	/* U = m x m */
 	/* E = m x n : 0 except on diagonal */
 	/* V = n x n */
-	for (i = 0; i < M; i++)
+	for (i = 0; i < 2; i++)
 	{
-		for (j = 0; j < N; j++)
+		for (j = 0; j < 2; j++)
 		{
 			jakeTemp1[i][j] = 0.0f;
 			jakeTemp2[i][j] = 0.0f;
@@ -464,9 +487,9 @@ void computeColourBurstMatrices(void)
 		}
 	}
 	/* jakeTemp2 = E = m x n : 0 except on diagonal */
-	for (i = 0; i < M; i++)
+	for (i = 0; i < 2; i++)
 	{
-		for (j = 0; j < N; j++)
+		for (j = 0; j < 2; j++)
 		{
 			float Evalue = 0.0f;
 			if (i == j)
@@ -476,13 +499,16 @@ void computeColourBurstMatrices(void)
 			jakeTemp2[i][j] = Evalue;
 		}
 	}
-	matrixPrintf(jakeTemp2, M, N, "E");
+	matrixPrintf(jakeTemp2, 2, 2, "E");
 	/* jakeTemp1 = U x E : U = m x m, E = m x n */
-	matrixMultiply(jakeTemp1, a, jakeTemp2, M, M, N);
-	matrixPrintf(jakeTemp1, M, N, "UxE");
+	matrixMultiply(jakeTemp1, a, jakeTemp2, 2, 2, 2);
+	matrixPrintf(jakeTemp1, 2, 2, "UxE");
 	/* jakeTemp3 = (U x E) x V* = jakeTemp1 * v : jakeTemp1 = m x n, V* = n x n */
-	matrixMultiply(jakeTemp3, jakeTemp1, v, M, N, N);
-	matrixPrintf(jakeTemp3, M, N, "UxExV*");
+	temp = v[0][1];
+	v[0][1] = v[1][0];
+	v[1][0] = temp;
+	matrixMultiply(jakeTemp3, jakeTemp1, v, 2, 2, 2);
+	matrixPrintf(jakeTemp3, 2, 2, "UxExV*");
 }
 
 /* Public API */
