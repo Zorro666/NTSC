@@ -348,20 +348,6 @@ static void computeGammaTable(void)
 /* out: u = U, q = E, v = V */
 extern int svd(unsigned int m, unsigned int n, int withu, int withv, float eps, float tol, float **a, float *q, float **u, float **v);
 
-static void matrixPrintf(float** mat, unsigned int numRows, unsigned int numCols, const char* const name)
-{
-	unsigned int i;
-	for (i = 0; i < numRows; i++)
-	{
-		unsigned int j;
-		for (j = 0; j < numCols; j++)
-		{
-			printf("%s[%d][%d] = %f ", name, i, j, mat[i][j]);
-		}
-		printf("\n");
-	}
-}
-
 static float** matrixMalloc(const unsigned int numRows, const unsigned int numCols)
 {
 	unsigned int i;
@@ -377,6 +363,20 @@ static float** matrixMalloc(const unsigned int numRows, const unsigned int numCo
 		}
 	}
 	return result;
+}
+
+static void matrixPrintf(float** mat, unsigned int numRows, unsigned int numCols, const char* const name)
+{
+	unsigned int i;
+	for (i = 0; i < numRows; i++)
+	{
+		unsigned int j;
+		for (j = 0; j < numCols; j++)
+		{
+			printf("%s[%d][%d] = %f ", name, i, j, mat[i][j]);
+		}
+		printf("\n");
+	}
 }
 
 static void matrixMultiply(float** result, float** left, float** right, 
@@ -399,6 +399,19 @@ static void matrixMultiply(float** result, float** left, float** right,
 	}
 }
 
+static void matrixTranspose(float** transpose, float** matrix, const unsigned int numRows)
+{
+	unsigned int i;
+	for (i = 0; i < numRows; i++)
+	{
+		unsigned int j;
+		for (j = 0; j < numRows; j++)
+		{
+			transpose[i][j] = matrix[j][i];
+		}
+	}
+}
+
 void computeColourBurstMatrices(void)
 {
 	const unsigned int M = 4;
@@ -408,25 +421,26 @@ void computeColourBurstMatrices(void)
 	float** E;
 	float** jakeTemp1;
 
-	float temp;
-
 	unsigned int i;
 	unsigned int j;
 	int result;
 
 	float* w;
 	float** v;
+	float** vTranspose;
 	float** a;
 	float** u;
 
 	a = matrixMalloc(M, M);
 	u = matrixMalloc(M, M);
 	v = matrixMalloc(N, N);
-	w = malloc(sizeof(float)*N);
-
+	vTranspose = matrixMalloc(N, N);
 	UxE = matrixMalloc(M, M);
 	E = matrixMalloc(M, M);
 	jakeTemp1 = matrixMalloc(M, M);
+
+	w = malloc(sizeof(float)*N);
+
 	for (i = 0; i < M; i++)
 	{
 		for (j = 0; j < M; j++)
@@ -502,11 +516,9 @@ void computeColourBurstMatrices(void)
 	/* UxE = U x E : U = m x m, E = m x n */
 	matrixMultiply(UxE, u, E, M, N, N);
 	matrixPrintf(UxE, M, N, "UxE");
+	matrixTranspose(vTranspose, v, N);
 	/* jakeTemp1 = (U x E) x V* = UxE * v : UxE = m x n, V* = n x n */
-	temp = v[0][1];
-	v[0][1] = v[1][0];
-	v[1][0] = temp;
-	matrixMultiply(jakeTemp1, UxE, v, M, N, N);
+	matrixMultiply(jakeTemp1, UxE, vTranspose, M, N, N);
 	matrixPrintf(jakeTemp1, M, N, "UxExV*");
 }
 
