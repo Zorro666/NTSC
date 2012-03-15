@@ -399,15 +399,15 @@ static void matrixMultiply(float** result, float** left, float** right,
 	}
 }
 
-static void matrixTranspose(float** transpose, float** matrix, const unsigned int numRows)
+static void matrixTranspose(float** transpose, float** matrix, const unsigned int numRows, const unsigned int numCols)
 {
 	unsigned int i;
 	for (i = 0; i < numRows; i++)
 	{
 		unsigned int j;
-		for (j = 0; j < numRows; j++)
+		for (j = 0; j < numCols; j++)
 		{
-			transpose[i][j] = matrix[j][i];
+			transpose[j][i] = matrix[i][j];
 		}
 	}
 }
@@ -418,7 +418,9 @@ void computeColourBurstMatrices(void)
 	const unsigned int N = 2;
 
 	float** UxE;
+	float** VxEplus;
 	float** E;
+	float** Eplus;
 	float** jakeTemp1;
 
 	unsigned int i;
@@ -430,26 +432,25 @@ void computeColourBurstMatrices(void)
 	float** vTranspose;
 	float** a;
 	float** u;
+	float** uTranspose;
 
 	a = matrixMalloc(M, M);
+
 	u = matrixMalloc(M, M);
+	uTranspose = matrixMalloc(M, M);
+
 	v = matrixMalloc(N, N);
 	vTranspose = matrixMalloc(N, N);
+
 	UxE = matrixMalloc(M, M);
+
 	E = matrixMalloc(M, M);
+	Eplus = matrixMalloc(N, M);
+	VxEplus = matrixMalloc(N, M);
+
 	jakeTemp1 = matrixMalloc(M, M);
 
 	w = malloc(sizeof(float)*N);
-
-	for (i = 0; i < M; i++)
-	{
-		for (j = 0; j < M; j++)
-		{
-			UxE[i][j] = 0.0f;
-			E[i][j] = 0.0f;
-			jakeTemp1[i][j] = UxE[i][j];
-		}
-	}
 
 	for (i = 0; i < M; i++)
 	{
@@ -516,10 +517,42 @@ void computeColourBurstMatrices(void)
 	/* UxE = U x E : U = m x m, E = m x n */
 	matrixMultiply(UxE, u, E, M, N, N);
 	matrixPrintf(UxE, M, N, "UxE");
-	matrixTranspose(vTranspose, v, N);
+	matrixTranspose(vTranspose, v, N, N);
 	/* jakeTemp1 = (U x E) x V* = UxE * v : UxE = m x n, V* = n x n */
 	matrixMultiply(jakeTemp1, UxE, vTranspose, M, N, N);
 	matrixPrintf(jakeTemp1, M, N, "UxExV*");
+
+	/* B = V x E+ x U* x Y */
+	/* B = best fit values */
+	/* E+ = E but with diagonal non-zero elements inverted */	
+	/* Y = vector of samples */
+
+	/* E+ = n x m : 0 except on diagonal  = 1.0f/w[i]*/
+	for (i = 0; i < N; i++)
+	{
+		for (j = 0; j < M; j++)
+		{
+			float Evalue = 0.0f;
+			if (i == j)
+			{
+				if ((w[i] < 0.0f) || (w[i] > 0.0f))
+				{
+					Evalue = 1.0f / w[i];
+				}
+			}
+			Eplus[i][j] = Evalue;
+		}
+	}
+	matrixPrintf(Eplus, N, M, "E+");
+	/* VxE+ */
+	matrixMultiply(VxEplus, v, Eplus, N, N, M);
+	matrixPrintf(VxEplus, N, M, "VxEplus");
+	/* B = V  * E+  *	U*  *	Y */
+	/*		NxN * NxM * MxM * M*/
+	matrixTranspose(uTranspose, u, M, M);
+	matrixPrintf(uTranspose, M, M, "uTranspose");
+	matrixMultiply(jakeTemp1, VxEplus, uTranspose, N, M, M);
+	matrixPrintf(jakeTemp1, N, M, "VxEplusxU*");
 }
 
 /* Public API */
