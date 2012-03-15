@@ -345,9 +345,8 @@ static void computeGammaTable(void)
 /* E = m x n */
 /* V = n x n */
 /* in: a = A */
-/* out: a = U, w = E, v = V* */
-extern int svd_decompose(float** a, unsigned int m, unsigned int n, float* w, float** v);
-extern int svd(int m,int n,int withu,int withv,float eps,float tol, float **a,float *q,float **u,float **v);
+/* out: u = U, q = E, v = V */
+extern int svd(unsigned int m, unsigned int n, int withu, int withv, float eps, float tol, float **a, float *q, float **u, float **v);
 
 static void matrixPrintf(float** mat, unsigned int numRows, unsigned int numCols, const char* const name)
 {
@@ -405,9 +404,9 @@ void computeColourBurstMatrices(void)
 	const unsigned int M = 4;
 	const unsigned int N = 2;
 
+	float** UxE;
+	float** E;
 	float** jakeTemp1;
-	float** jakeTemp2;
-	float** jakeTemp3;
 
 	float temp;
 
@@ -420,14 +419,24 @@ void computeColourBurstMatrices(void)
 	float** a;
 	float** u;
 
-	a = matrixMalloc(4, 4);
-	u = matrixMalloc(4, 4);
-	v = matrixMalloc(4, 4);
-	w = malloc(sizeof(float)*4);
+	a = matrixMalloc(M, M);
+	u = matrixMalloc(M, M);
+	v = matrixMalloc(N, N);
+	w = malloc(sizeof(float)*N);
 
-	jakeTemp1 = matrixMalloc(4, 4);
-	jakeTemp2 = matrixMalloc(4, 4);
-	jakeTemp3 = matrixMalloc(4, 4);
+	UxE = matrixMalloc(M, M);
+	E = matrixMalloc(M, M);
+	jakeTemp1 = matrixMalloc(M, M);
+	for (i = 0; i < M; i++)
+	{
+		for (j = 0; j < M; j++)
+		{
+			UxE[i][j] = 0.0f;
+			E[i][j] = 0.0f;
+			jakeTemp1[i][j] = UxE[i][j];
+		}
+	}
+
 	for (i = 0; i < M; i++)
 	{
 		const float angle = (33.0f + ((float)(i+0)*90.0f)) * (float)M_PI/180.0f;
@@ -436,6 +445,7 @@ void computeColourBurstMatrices(void)
 		a[i][0] = sinC;
 		a[i][1] = cosC;
 	}
+	/*
 	a[0][0] = 2.0f;
 	a[0][1] = 1.0f;
 	a[0][2] = 0.0f;
@@ -452,63 +462,52 @@ void computeColourBurstMatrices(void)
 	a[3][1] = 0.0f;
 	a[3][2] = 0.0f;
 	a[3][3] = 0.0f;
+	*/
 
 	printf("Input\n");
-	matrixPrintf(a, N, N, "a");
-
-	result = svd_decompose(a, 2, 2, w, v);
-	/*result = svd(2, 2, 1, 1, 1.0e-10f, 1.0e-10f, a, w, u, v);*/
-
-	printf("SVD\n");
-	printf("result = %d\n", result);
-
-	matrixPrintf(a, 2, 2, "a");
-	matrixPrintf(u, 2, 2, "u");
-	for (j = 0; j < 2; j++)
-	{
-		printf("w[%d] = %f\n", j, w[j]);
-	}
-	matrixPrintf(v, 2, 2, "v");
+	matrixPrintf(a, M, N, "a");
 
 	/* SVD: A  = U x E x V* */
-	/* out: a = U, w = E, v = V* */
+	/* out: a = U, w = E (just the non-zero values), v = V */
 	/* A = m x n */
 	/* U = m x m */
 	/* E = m x n : 0 except on diagonal */
 	/* V = n x n */
-	for (i = 0; i < 2; i++)
+	result = svd(M, N, 1, 1, 1.0e-10f, 1.0e-10f, a, w, u, v);
+
+	printf("SVD result = %d\n", result);
+
+	matrixPrintf(u, M, M, "u");
+	for (j = 0; j < N; j++)
 	{
-		for (j = 0; j < 2; j++)
-		{
-			jakeTemp1[i][j] = 0.0f;
-			jakeTemp2[i][j] = 0.0f;
-			jakeTemp3[i][j] = 0.0f;
-			jakeTemp1[i][j] = jakeTemp3[i][j];
-		}
+		printf("w[%d] = %f\n", j, w[j]);
 	}
-	/* jakeTemp2 = E = m x n : 0 except on diagonal */
-	for (i = 0; i < 2; i++)
+	matrixPrintf(v, N, N, "v");
+
+	/* E = m x n : 0 except on diagonal */
+	for (i = 0; i < M; i++)
 	{
-		for (j = 0; j < 2; j++)
+		for (j = 0; j < N; j++)
 		{
 			float Evalue = 0.0f;
 			if (i == j)
 			{
 				Evalue = w[i];
 			}
-			jakeTemp2[i][j] = Evalue;
+			E[i][j] = Evalue;
 		}
 	}
-	matrixPrintf(jakeTemp2, 2, 2, "E");
-	/* jakeTemp1 = U x E : U = m x m, E = m x n */
-	matrixMultiply(jakeTemp1, a, jakeTemp2, 2, 2, 2);
-	matrixPrintf(jakeTemp1, 2, 2, "UxE");
-	/* jakeTemp3 = (U x E) x V* = jakeTemp1 * v : jakeTemp1 = m x n, V* = n x n */
+	matrixPrintf(E, M, N, "E");
+
+	/* UxE = U x E : U = m x m, E = m x n */
+	matrixMultiply(UxE, u, E, M, N, N);
+	matrixPrintf(UxE, M, N, "UxE");
+	/* jakeTemp1 = (U x E) x V* = UxE * v : UxE = m x n, V* = n x n */
 	temp = v[0][1];
 	v[0][1] = v[1][0];
 	v[1][0] = temp;
-	matrixMultiply(jakeTemp3, jakeTemp1, v, 2, 2, 2);
-	matrixPrintf(jakeTemp3, 2, 2, "UxExV*");
+	matrixMultiply(jakeTemp1, UxE, v, M, N, N);
+	matrixPrintf(jakeTemp1, M, N, "UxExV*");
 }
 
 /* Public API */
