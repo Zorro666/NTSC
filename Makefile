@@ -18,7 +18,7 @@ C_LINK_FLAGS += -lGL
 C_TARGET_EXTENSION := 
 endif	# ifdef WINDIR
 
-DECODE_C_DEPENDS:=window.c ntscDecode.c ntscDecodeCrtsim.c svd.c
+DECODE_C_DEPENDS:=window.c ntscDecode.c ntscDecodeCrtsim.c svd.c ntscMatrix.c
 DECODE_CPP_DEPENDS:=
 C_PROJECTS:=decode
 

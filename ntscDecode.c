@@ -3,10 +3,9 @@
 #include <math.h>
 #include <malloc.h>
 
+#include "ntscMatrix.h"
 #include "ntscDecode.h"
 #include "ntscDecodeCrtsim.h"
-
-#define MATRIX_DEBUG 0
 
 #define NTSC_GAMMA (2.2f)
 
@@ -350,82 +349,6 @@ static void computeGammaTable(void)
 /* in: a = A */
 /* out: u = U, q = E, v = V */
 extern int svd(unsigned int m, unsigned int n, int withu, int withv, float eps, float tol, float **a, float *q, float **u, float **v);
-
-static float** matrixMalloc(const unsigned int numRows, const unsigned int numCols)
-{
-	unsigned int i;
-	float** result = NULL;
-	result = malloc(sizeof(float*)*numRows);
-	for (i = 0; i < numRows; i++)
-	{
-		unsigned int j;
-		result[i] = malloc(sizeof(float)*numCols);
-		for (j = 0; j < numCols; j++)
-		{
-			result[i][j] = 0.0f;
-		}
-	}
-	return result;
-}
-
-static void matrixFree(float** matrix, const unsigned int numRows)
-{
-	unsigned int i;
-	for (i = 0; i < numRows; i++)
-	{
-		free(matrix[i]);
-	}
-	free(matrix);
-}
-
-#if MATRIX_DEBUG
-static void matrixPrintf(float** mat, unsigned int numRows, unsigned int numCols, const char* const name)
-{
-	unsigned int i;
-	for (i = 0; i < numRows; i++)
-	{
-		unsigned int j;
-		for (j = 0; j < numCols; j++)
-		{
-			printf("%s[%d][%d] = %f ", name, i, j, mat[i][j]);
-		}
-		printf("\n");
-	}
-}
-#endif /* #if MATRIX_DEBUG */
-
-static void matrixMultiply(float** result, float** left, float** right, 
-													 const unsigned int numRowsLeft, const unsigned int numColsLeft, 
-													 const unsigned int numColsRight)
-{
-	unsigned int i;
-	for (i = 0; i < numRowsLeft; i++)
-	{
-		unsigned int j;
-		for (j = 0; j < numColsRight; j++)
-		{
-			unsigned int k;
-			result[i][j] = 0.0f;
-			for (k = 0; k < numColsLeft; k++)
-			{
-				result[i][j] += left[i][k] * right[k][j];
-			}
-		}
-	}
-}
-
-static void matrixTranspose(float** transpose, float** matrix, const unsigned int numRows, const unsigned int numCols)
-{
-	unsigned int i;
-	for (i = 0; i < numRows; i++)
-	{
-		unsigned int j;
-		for (j = 0; j < numCols; j++)
-		{
-			transpose[j][i] = matrix[i][j];
-		}
-	}
-}
 
 const unsigned int COLOUR_BURST_M = 20;
 const unsigned int COLOUR_BURST_N = 2;
