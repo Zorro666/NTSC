@@ -83,6 +83,9 @@ static int s_xpos = 0;
 static int s_ypos = 0;
 static int s_colourBurstTotal = 0;
 static float s_colourBurstSamples[4];
+static NtscMatrix s_colourBurstSamplePoints;
+static NtscMatrix s_colourBurstBestFitMatrix;
+static NtscMatrix s_colourBurstBestFitCoeffs;
 static float s_colourBurstAvg = 0.0f;
 
 static int s_syncSamples = 0;
@@ -269,7 +272,7 @@ static void decodeSignalIQ(const int compositeSignal, float* outI, float* outQ)
 	float cosValue = 0;
 	float sinColourCarrier;
 	float cosColourCarrier;
-	const float IQscaling = 5.0f/100.0f;
+	const float IQscaling = 10.0f/100.0f;
 	float chromaValue = (float)compositeSignal;
 
 	/* demodulate chroma to I, Q */
@@ -392,7 +395,7 @@ void computeColourBurstMatrices(NtscMatrix* bestFitMatrixPtr, const unsigned int
 
 	for (i = 0; i < M; i++)
 	{
-		const float angle = (33.0f + ((float)(i+carrierPhase)*90.0f)) * (float)M_PI/180.0f;
+		const float angle = (-33.0f + ((float)(i+carrierPhase)*90.0f)) * (float)M_PI/180.0f;
 		const float sinC = (float)sinf(angle);
 		const float cosC = (float)cosf(angle);
 		a.m_matrix[i][0] = sinC;
@@ -536,26 +539,19 @@ void computeColourBurstMatrices(NtscMatrix* bestFitMatrixPtr, const unsigned int
 void testColourBurstMatrix(void)
 {
 	const unsigned int M = COLOUR_BURST_M;
-	const unsigned int N = COLOUR_BURST_N;
 	unsigned int i;
-	unsigned int carrierPhase;
-	NtscMatrix bestFitMatrix;
 	NtscMatrix samples;
-	NtscMatrix bestFitCoeffs;
+	unsigned int carrierPhase = 0;
 	float coeffA = 0.0f;
 	float coeffB = 0.0f;
 
 	matrixCreate(&samples, M, 1, "samples");
-	matrixCreate(&bestFitCoeffs, N, 1, "bestFitCoeffs");
-
-	carrierPhase = 0;
-	computeColourBurstMatrices(&bestFitMatrix, carrierPhase);
 
 	coeffA = +2.0f;
 	coeffB = -3.0f;
 	for (i = 0; i < M; i++)
 	{
-		const float angle = (33.0f + ((float)(i+carrierPhase)*90.0f)) * (float)M_PI/180.0f;
+		const float angle = (-33.0f + ((float)(i+carrierPhase)*90.0f)) * (float)M_PI/180.0f;
 		const float sinC = (float)sinf(angle);
 		const float cosC = (float)cosf(angle);
 		samples.m_matrix[i][0] = coeffA*sinC + coeffB*cosC;
@@ -564,18 +560,18 @@ void testColourBurstMatrix(void)
 	matrixPrintf(&samples, NULL);
 #endif /* #if MATRIX_DEBUG */
 	/* NxM * Mx1 */
-	matrixMultiply(&bestFitCoeffs, &bestFitMatrix, &samples);
+	matrixMultiply(&s_colourBurstBestFitCoeffs, &s_colourBurstBestFitMatrix, &samples);
 #if MATRIX_DEBUG
 	matrixPrintf(&bestFitCoeffs, NULL);
 #endif /* #if MATRIX_DEBUG */
 	printf("Input A:%f B:%f\n", coeffA, coeffB);
-	printf("BestFit A:%f B:%f\n", bestFitCoeffs.m_matrix[0][0], bestFitCoeffs.m_matrix[1][0]);
+	printf("BestFit A:%f B:%f\n", s_colourBurstBestFitCoeffs.m_matrix[0][0], s_colourBurstBestFitCoeffs.m_matrix[1][0]);
 
 	coeffA = +0.0f;
 	coeffB = +1.0f;
 	for (i = 0; i < M; i++)
 	{
-		const float angle = (33.0f + ((float)(i+carrierPhase)*90.0f)) * (float)M_PI/180.0f;
+		const float angle = (-33.0f + ((float)(i+carrierPhase)*90.0f)) * (float)M_PI/180.0f;
 		const float sinC = (float)sinf(angle);
 		const float cosC = (float)cosf(angle);
 		samples.m_matrix[i][0] = coeffA*sinC + coeffB*cosC;
@@ -583,12 +579,26 @@ void testColourBurstMatrix(void)
 #if MATRIX_DEBUG
 	matrixPrintf(&samples, NULL);
 #endif /* #if MATRIX_DEBUG */
-	matrixMultiply(&bestFitCoeffs, &bestFitMatrix, &samples);
+	printf("1\n");
+	matrixMultiply(&s_colourBurstBestFitCoeffs, &s_colourBurstBestFitMatrix, &samples);
 #if MATRIX_DEBUG
 	matrixPrintf(&bestFitCoeffs, NULL);
 #endif /* #if MATRIX_DEBUG */
 	printf("Input A:%f B:%f\n", coeffA, coeffB);
-	printf("BestFit A:%f B:%f\n", bestFitCoeffs.m_matrix[0][0], bestFitCoeffs.m_matrix[1][0]);
+	printf("BestFit A:%f B:%f\n", s_colourBurstBestFitCoeffs.m_matrix[0][0], s_colourBurstBestFitCoeffs.m_matrix[1][0]);
+}
+
+static void initColourBurstData(void)
+{
+	const unsigned int M = COLOUR_BURST_M;
+	const unsigned int N = COLOUR_BURST_N;
+
+	matrixCreate(&s_colourBurstSamplePoints, M, 1, "samples");
+	matrixCreate(&s_colourBurstBestFitMatrix, N, M, "bestFitMatrix");
+	matrixCreate(&s_colourBurstBestFitCoeffs, N, 1, "bestFitCoeffs");
+	computeColourBurstMatrices(&s_colourBurstBestFitMatrix, 0);
+
+	testColourBurstMatrix();
 }
 
 /* Public API */
@@ -605,7 +615,7 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 	s_ypos = 0;
 	s_pixelPos = 0;
 
-	testColourBurstMatrix();
+	initColourBurstData();
 
 	computeLowPassCoeffs(s_LPFY_a, s_LPFY_b, NTSC_Y_LPF_CUTOFF, NTSC_SAMPLE_RATE);
 	printf("LPFY coeffs\n");
@@ -715,7 +725,6 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		if ((s_hsyncFound == 1) && (s_colourBurstFound == 0))
 		{
 			static int sampleAtStart = 0;
-			static int sampleAtStart2 = 0;
 			const int colourBurstStart = NTSC_COLOUR_BURST_START_SAMPLE;
 			const int colourBurstEnd = colourBurstStart + NTSC_COLOUR_BURST_LENGTH_SAMPLE;
 			const int colourBurstLookStart = colourBurstStart + 8;
@@ -729,22 +738,24 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 				s_colourBurstSamples[2] = 0.0f;
 				s_colourBurstSamples[3] = 0.0f;
 				sampleAtStart = s_ntscSamples;
-				sampleAtStart2 = s_sampleCounter;
 			}
 			if ((s_sampleCounter >= colourBurstLookStart) && (s_sampleCounter < colourBurstLookEnd))
 			{
+				int burstSamplePoint;
 				int burstSampleIndex = (s_samplesPerField ) & 0x3;
 				burstSampleIndex = (s_hsyncPosition + s_sampleCounter) & 0x3;
 
-				burstSampleIndex = (s_sampleCounter - colourBurstLookStart);
-				burstSampleIndex += 0*s_hsyncPosition;
-				burstSampleIndex += sampleAtStart;
-				burstSampleIndex += 0*sampleAtStart2;
+				burstSamplePoint = (s_sampleCounter - colourBurstLookStart);
+				burstSamplePoint += sampleAtStart;
 
+				burstSampleIndex = burstSamplePoint;
+
+				burstSamplePoint = burstSamplePoint%20;
 				burstSampleIndex &= 0x3;
 				/* We are in the colour burst phase */
 				s_colourBurstTotal += (compositeSignal*compositeSignal);
 				s_colourBurstSamples[burstSampleIndex] = s_colourBurstSamples[burstSampleIndex] * 0.5f + 0.5f*(float)compositeSignal;
+				s_colourBurstSamplePoints.m_matrix[burstSamplePoint][0] = (float)compositeSignal;
 			}
 			if (s_sampleCounter >= colourBurstLookEnd)
 			{
@@ -788,8 +799,8 @@ cos(at+b) = sin(180+at+b)*sin_colour_carrier - cos(at+b+180)*cos_colour_carrier 
           = sin(at+b)*sin_colour_carrier - cos(at+b)*cos_colour_carrier
 */
 					/*
-					printf("jI:%d h:%d sam:%d sam2:%d y:%d n:%d a:%f burstSamples:%.3ff, %.3ff, %.3ff, %.3f\n", 
-							s_jakeI&0x3, s_hsyncPosition&0x3, sampleAtStart&0x3, sampleAtStart2&0x3,
+					printf("jI:%d h:%d sam:%d y:%d n:%d a:%f burstSamples:%.3ff, %.3ff, %.3ff, %.3f\n", 
+							s_jakeI&0x3, s_hsyncPosition&0x3, sampleAtStart&0x3, 
 							s_ypos, 
 							numSamples,
 							s_colourBurstAvg,
@@ -807,6 +818,29 @@ cos(at+b) = sin(180+at+b)*sin_colour_carrier - cos(at+b+180)*cos_colour_carrier 
 					s_jakeVals[1] = bI * cosC + bQ * sinC;
 					s_jakeVals[2] = -s_jakeVals[0];
 					s_jakeVals[3] = -s_jakeVals[1];
+
+					{
+						const float burstA = s_colourBurstBestFitCoeffs.m_matrix[0][0];
+						const float burstB = s_colourBurstBestFitCoeffs.m_matrix[1][0];
+						const float burstK = sqrtf(burstA*burstA + burstB*burstB);
+						const float burstOmega = atan2f(burstB, burstA);
+						const float burstTheta = burstOmega;
+						float newVals[4];
+						newVals[0] = sinf(burstTheta+(float)(90.0f*(M_PI/180.0f)));
+						newVals[1] = cosf(burstTheta+(float)(90.0f*(M_PI/180.0f)));
+						newVals[2] = sinf(burstTheta+(float)(270.0f*(M_PI/180.0f)));
+						newVals[3] = cosf(burstTheta+(float)(270.0f*(M_PI/180.0f)));
+
+						matrixMultiply(&s_colourBurstBestFitCoeffs, &s_colourBurstBestFitMatrix, &s_colourBurstSamplePoints);
+						printf("y:%d BestFit A:%f B:%f K:%f omega:%f\n", s_ypos, burstA, burstB, burstK, (float)burstOmega*(180.0f/M_PI));
+						printf("y:%d newVals:%f %f %f %f\n", s_ypos, newVals[0], newVals[1], newVals[2], newVals[3]);
+						printf("y:%d oldVals:%f %f %f %f\n", s_ypos, s_jakeVals[0], s_jakeVals[1], s_jakeVals[2], s_jakeVals[3]);
+
+						s_jakeVals[0] = newVals[0];
+						s_jakeVals[1] = newVals[1];
+						s_jakeVals[2] = newVals[2];
+						s_jakeVals[3] = newVals[3];
+					}
 				}
 				else
 				{
