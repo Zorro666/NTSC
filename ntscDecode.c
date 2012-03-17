@@ -5,6 +5,8 @@
 #include "ntscDecode.h"
 #include "ntscDecodeCrtsim.h"
 
+#define MATRIX_DEBUG 0
+
 #define NTSC_GAMMA (2.2f)
 
 /* Sample values (/4 compared to NTSC reference levels because 8-bit instead of 10-bit */
@@ -422,6 +424,8 @@ void computeColourBurstMatrices(void)
 	float** E;
 	float** Eplus;
 	float** jakeTemp1;
+	float** samples;
+	float** bestFit;
 
 	unsigned int i;
 	unsigned int j;
@@ -449,6 +453,8 @@ void computeColourBurstMatrices(void)
 	VxEplus = matrixMalloc(N, M);
 
 	jakeTemp1 = matrixMalloc(M, M);
+	samples = matrixMalloc(M, 1);
+	bestFit = matrixMalloc(M, 1);
 
 	w = malloc(sizeof(float)*N);
 
@@ -479,8 +485,10 @@ void computeColourBurstMatrices(void)
 	a[3][3] = 0.0f;
 	*/
 
+#if MATRIX_DEBUG
 	printf("Input\n");
 	matrixPrintf(a, M, N, "a");
+#endif /* #if MATRIX_DEBUG */
 
 	/* SVD: A  = U x E x V* */
 	/* out: a = U, w = E (just the non-zero values), v = V */
@@ -489,15 +497,24 @@ void computeColourBurstMatrices(void)
 	/* E = m x n : 0 except on diagonal */
 	/* V = n x n */
 	result = svd(M, N, 1, 1, 1.0e-10f, 1.0e-10f, a, w, u, v);
+	if (result != 0)
+	{
+		printf("svd failed\n");
+		return;
+	}
 
+#if MATRIX_DEBUG
 	printf("SVD result = %d\n", result);
+#endif /* #if MATRIX_DEBUG */
 
+#if MATRIX_DEBUG
 	matrixPrintf(u, M, M, "u");
 	for (j = 0; j < N; j++)
 	{
 		printf("w[%d] = %f\n", j, w[j]);
 	}
 	matrixPrintf(v, N, N, "v");
+#endif /* #if MATRIX_DEBUG */
 
 	/* E = m x n : 0 except on diagonal */
 	for (i = 0; i < M; i++)
@@ -512,15 +529,21 @@ void computeColourBurstMatrices(void)
 			E[i][j] = Evalue;
 		}
 	}
+#if MATRIX_DEBUG
 	matrixPrintf(E, M, N, "E");
+#endif /* #if MATRIX_DEBUG */
 
 	/* UxE = U x E : U = m x m, E = m x n */
 	matrixMultiply(UxE, u, E, M, N, N);
+#if MATRIX_DEBUG
 	matrixPrintf(UxE, M, N, "UxE");
+#endif /* #if MATRIX_DEBUG */
 	matrixTranspose(vTranspose, v, N, N);
 	/* jakeTemp1 = (U x E) x V* = UxE * v : UxE = m x n, V* = n x n */
 	matrixMultiply(jakeTemp1, UxE, vTranspose, M, N, N);
+#if MATRIX_DEBUG
 	matrixPrintf(jakeTemp1, M, N, "UxExV*");
+#endif /* #if MATRIX_DEBUG */
 
 	/* B = V x E+ x U* x Y */
 	/* B = best fit values */
@@ -543,16 +566,39 @@ void computeColourBurstMatrices(void)
 			Eplus[i][j] = Evalue;
 		}
 	}
+#if MATRIX_DEBUG
 	matrixPrintf(Eplus, N, M, "E+");
+#endif /* #if MATRIX_DEBUG */
 	/* VxE+ */
 	matrixMultiply(VxEplus, v, Eplus, N, N, M);
+#if MATRIX_DEBUG
 	matrixPrintf(VxEplus, N, M, "VxEplus");
+#endif /* #if MATRIX_DEBUG */
 	/* B = V  * E+  *	U*  *	Y */
 	/*		NxN * NxM * MxM * M*/
 	matrixTranspose(uTranspose, u, M, M);
+#if MATRIX_DEBUG
 	matrixPrintf(uTranspose, M, M, "uTranspose");
+#endif /* #if MATRIX_DEBUG */
 	matrixMultiply(jakeTemp1, VxEplus, uTranspose, N, M, M);
+#if MATRIX_DEBUG
 	matrixPrintf(jakeTemp1, N, M, "VxEplusxU*");
+#endif /* #if MATRIX_DEBUG */
+
+	for (i = 0; i < M; i++)
+	{
+		samples[i][0] = 2.0f * a[i][0] -3.0f * a[i][1];
+	}
+	matrixPrintf(samples, M, 1, "samples");
+	matrixMultiply(bestFit, jakeTemp1, samples, N, M, 1);
+	matrixPrintf(bestFit, M, 1, "bestFit");
+	for (i = 0; i < M; i++)
+	{
+		samples[i][0] = a[i][1];
+	}
+	matrixPrintf(samples, M, 1, "samples");
+	matrixMultiply(bestFit, jakeTemp1, samples, N, M, 1);
+	matrixPrintf(bestFit, M, 1, "bestFit");
 }
 
 /* Public API */
