@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <malloc.h>
 
 #include "ntscDecode.h"
 #include "ntscDecodeCrtsim.h"
@@ -367,6 +368,17 @@ static float** matrixMalloc(const unsigned int numRows, const unsigned int numCo
 	return result;
 }
 
+static void matrixFree(float** matrix, const unsigned int numRows)
+{
+	unsigned int i;
+	for (i = 0; i < numRows; i++)
+	{
+		free(matrix[i]);
+	}
+	free(matrix);
+}
+
+#if MATRIX_DEBUG
 static void matrixPrintf(float** mat, unsigned int numRows, unsigned int numCols, const char* const name)
 {
 	unsigned int i;
@@ -380,6 +392,7 @@ static void matrixPrintf(float** mat, unsigned int numRows, unsigned int numCols
 		printf("\n");
 	}
 }
+#endif /* #if MATRIX_DEBUG */
 
 static void matrixMultiply(float** result, float** left, float** right, 
 													 const unsigned int numRowsLeft, const unsigned int numColsLeft, 
@@ -414,18 +427,18 @@ static void matrixTranspose(float** transpose, float** matrix, const unsigned in
 	}
 }
 
-void computeColourBurstMatrices(void)
-{
-	const unsigned int M = 4;
-	const unsigned int N = 2;
+const unsigned int COLOUR_BURST_M = 20;
+const unsigned int COLOUR_BURST_N = 2;
 
+void computeColourBurstMatrices(float*** bestFitMatrixPtr, const unsigned int carrierPhase)
+{
+	const unsigned int M = COLOUR_BURST_M;
+	const unsigned int N = COLOUR_BURST_N;
 	float** UxE;
 	float** VxEplus;
 	float** E;
 	float** Eplus;
 	float** jakeTemp1;
-	float** samples;
-	float** bestFit;
 
 	unsigned int i;
 	unsigned int j;
@@ -437,6 +450,7 @@ void computeColourBurstMatrices(void)
 	float** a;
 	float** u;
 	float** uTranspose;
+	float** bestFitMatrix;
 
 	a = matrixMalloc(M, M);
 
@@ -453,14 +467,14 @@ void computeColourBurstMatrices(void)
 	VxEplus = matrixMalloc(N, M);
 
 	jakeTemp1 = matrixMalloc(M, M);
-	samples = matrixMalloc(M, 1);
-	bestFit = matrixMalloc(M, 1);
+
+	bestFitMatrix = matrixMalloc(M, M);
 
 	w = malloc(sizeof(float)*N);
 
 	for (i = 0; i < M; i++)
 	{
-		const float angle = (33.0f + ((float)(i+0)*90.0f)) * (float)M_PI/180.0f;
+		const float angle = (33.0f + ((float)(i+carrierPhase)*90.0f)) * (float)M_PI/180.0f;
 		const float sinC = (float)sinf(angle);
 		const float cosC = (float)cosf(angle);
 		a[i][0] = sinC;
@@ -580,25 +594,79 @@ void computeColourBurstMatrices(void)
 #if MATRIX_DEBUG
 	matrixPrintf(uTranspose, M, M, "uTranspose");
 #endif /* #if MATRIX_DEBUG */
-	matrixMultiply(jakeTemp1, VxEplus, uTranspose, N, M, M);
+	matrixMultiply(bestFitMatrix, VxEplus, uTranspose, N, M, M);
 #if MATRIX_DEBUG
-	matrixPrintf(jakeTemp1, N, M, "VxEplusxU*");
+	matrixPrintf(bestFitMatrix, N, M, "VxEplusxU*");
 #endif /* #if MATRIX_DEBUG */
+	*bestFitMatrixPtr = bestFitMatrix;
 
+	matrixFree(a, M);
+	matrixFree(u, M);
+	matrixFree(uTranspose, M);
+	matrixFree(v, N);
+	matrixFree(vTranspose, N);
+	matrixFree(UxE, M);
+	matrixFree(E, M);
+	matrixFree(Eplus, N);
+	matrixFree(VxEplus, N);
+	matrixFree(jakeTemp1, M);
+}
+
+void testColourBurstMatrix(void)
+{
+	const unsigned int M = COLOUR_BURST_M;
+	const unsigned int N = COLOUR_BURST_N;
+	unsigned int i;
+	unsigned int carrierPhase;
+	float** bestFitMatrix = NULL;
+	float** samples;
+	float** bestFitCoeffs;
+	float coeffA = 0.0f;
+	float coeffB = 0.0f;
+
+	samples = matrixMalloc(M, 1);
+	bestFitCoeffs = matrixMalloc(M, 1);
+
+	carrierPhase = 0;
+	computeColourBurstMatrices(&bestFitMatrix, carrierPhase);
+
+	coeffA = +2.0f;
+	coeffB = -3.0f;
 	for (i = 0; i < M; i++)
 	{
-		samples[i][0] = 2.0f * a[i][0] -3.0f * a[i][1];
+		const float angle = (33.0f + ((float)(i+carrierPhase)*90.0f)) * (float)M_PI/180.0f;
+		const float sinC = (float)sinf(angle);
+		const float cosC = (float)cosf(angle);
+		samples[i][0] = coeffA*sinC + coeffB*cosC;
 	}
+#if MATRIX_DEBUG
 	matrixPrintf(samples, M, 1, "samples");
-	matrixMultiply(bestFit, jakeTemp1, samples, N, M, 1);
-	matrixPrintf(bestFit, M, 1, "bestFit");
+#endif /* #if MATRIX_DEBUG */
+	matrixMultiply(bestFitCoeffs, bestFitMatrix, samples, N, M, 1);
+#if MATRIX_DEBUG
+	matrixPrintf(bestFitCoeffs, M, 1, "bestFitCoeffs");
+#endif /* #if MATRIX_DEBUG */
+	printf("Input A:%f B:%f\n", coeffA, coeffB);
+	printf("BestFit A:%f B:%f\n", bestFitCoeffs[0][0], bestFitCoeffs[1][0]);
+
+	coeffA = +0.0f;
+	coeffB = +1.0f;
 	for (i = 0; i < M; i++)
 	{
-		samples[i][0] = a[i][1];
+		const float angle = (33.0f + ((float)(i+carrierPhase)*90.0f)) * (float)M_PI/180.0f;
+		const float sinC = (float)sinf(angle);
+		const float cosC = (float)cosf(angle);
+		samples[i][0] = coeffA*sinC + coeffB*cosC;
 	}
+#if MATRIX_DEBUG
 	matrixPrintf(samples, M, 1, "samples");
-	matrixMultiply(bestFit, jakeTemp1, samples, N, M, 1);
-	matrixPrintf(bestFit, M, 1, "bestFit");
+#endif /* #if MATRIX_DEBUG */
+	matrixMultiply(bestFitCoeffs, bestFitMatrix, samples, N, M, 1);
+#if MATRIX_DEBUG
+	matrixPrintf(bestFitCoeffs, M, 1, "bestFitCoeffs");
+#endif /* #if MATRIX_DEBUG */
+	printf("Input A:%f B:%f\n", coeffA, coeffB);
+	printf("BestFit A:%f B:%f\n", bestFitCoeffs[0][0], bestFitCoeffs[1][0]);
 }
 
 /* Public API */
@@ -615,7 +683,7 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 	s_ypos = 0;
 	s_pixelPos = 0;
 
-	computeColourBurstMatrices();
+	testColourBurstMatrix();
 
 	computeLowPassCoeffs(s_LPFY_a, s_LPFY_b, NTSC_Y_LPF_CUTOFF, NTSC_SAMPLE_RATE);
 	printf("LPFY coeffs\n");
