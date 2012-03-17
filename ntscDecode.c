@@ -353,45 +353,40 @@ extern int svd(unsigned int m, unsigned int n, int withu, int withv, float eps, 
 const unsigned int COLOUR_BURST_M = 20;
 const unsigned int COLOUR_BURST_N = 2;
 
-void computeColourBurstMatrices(float*** bestFitMatrixPtr, const unsigned int carrierPhase)
+void computeColourBurstMatrices(NtscMatrix* bestFitMatrixPtr, const unsigned int carrierPhase)
 {
 	const unsigned int M = COLOUR_BURST_M;
 	const unsigned int N = COLOUR_BURST_N;
-	float** UxE;
-	float** VxEplus;
-	float** E;
-	float** Eplus;
-	float** jakeTemp1;
-
 	unsigned int i;
 	unsigned int j;
 	int result;
 
 	float* w;
-	float** v;
-	float** vTranspose;
-	float** a;
-	float** u;
-	float** uTranspose;
-	float** bestFitMatrix;
 
-	a = matrixMalloc(M, M);
+	NtscMatrix UxE;
+	NtscMatrix VxEplus;
+	NtscMatrix E;
+	NtscMatrix Eplus;
+	NtscMatrix jakeTemp1;
 
-	u = matrixMalloc(M, M);
-	uTranspose = matrixMalloc(M, M);
+	NtscMatrix v;
+	NtscMatrix vTranspose;
+	NtscMatrix a;
+	NtscMatrix u;
+	NtscMatrix uTranspose;
 
-	v = matrixMalloc(N, N);
-	vTranspose = matrixMalloc(N, N);
+	matrixCreate(&a, M, M, "a");
+	matrixCreate(&u, M, M, "u");
+	matrixCreate(&uTranspose, M, M, "u*");
+	matrixCreate(&v, N, N, "v");
+	matrixCreate(&vTranspose, N, N, "v*");
+	matrixCreate(&UxE, M, N, "UxE");
+	matrixCreate(&E, M, N, "E");
+	matrixCreate(&Eplus, N, M, "E+");
+	matrixCreate(&VxEplus, N, M, "VxE+");
+	matrixCreate(&jakeTemp1, M, N, "jakeTemp1");
 
-	UxE = matrixMalloc(M, M);
-
-	E = matrixMalloc(M, M);
-	Eplus = matrixMalloc(N, M);
-	VxEplus = matrixMalloc(N, M);
-
-	jakeTemp1 = matrixMalloc(M, M);
-
-	bestFitMatrix = matrixMalloc(M, M);
+	matrixCreate(bestFitMatrixPtr, N, M, "bestFitMatrix");
 
 	w = malloc(sizeof(float)*N);
 
@@ -400,8 +395,8 @@ void computeColourBurstMatrices(float*** bestFitMatrixPtr, const unsigned int ca
 		const float angle = (33.0f + ((float)(i+carrierPhase)*90.0f)) * (float)M_PI/180.0f;
 		const float sinC = (float)sinf(angle);
 		const float cosC = (float)cosf(angle);
-		a[i][0] = sinC;
-		a[i][1] = cosC;
+		a.m_matrix[i][0] = sinC;
+		a.m_matrix[i][1] = cosC;
 	}
 	/*
 	a[0][0] = 2.0f;
@@ -424,7 +419,7 @@ void computeColourBurstMatrices(float*** bestFitMatrixPtr, const unsigned int ca
 
 #if MATRIX_DEBUG
 	printf("Input\n");
-	matrixPrintf(a, M, N, "a");
+	matrixPrintf(&a, NULL);
 #endif /* #if MATRIX_DEBUG */
 
 	/* SVD: A  = U x E x V* */
@@ -433,7 +428,7 @@ void computeColourBurstMatrices(float*** bestFitMatrixPtr, const unsigned int ca
 	/* U = m x m */
 	/* E = m x n : 0 except on diagonal */
 	/* V = n x n */
-	result = svd(M, N, 1, 1, 1.0e-10f, 1.0e-10f, a, w, u, v);
+	result = svd(M, N, 1, 1, 1.0e-10f, 1.0e-10f, a.m_matrix, w, u.m_matrix, v.m_matrix);
 	if (result != 0)
 	{
 		printf("svd failed\n");
@@ -445,12 +440,12 @@ void computeColourBurstMatrices(float*** bestFitMatrixPtr, const unsigned int ca
 #endif /* #if MATRIX_DEBUG */
 
 #if MATRIX_DEBUG
-	matrixPrintf(u, M, M, "u");
+	matrixPrintf(&u, NULL);
 	for (j = 0; j < N; j++)
 	{
 		printf("w[%d] = %f\n", j, w[j]);
 	}
-	matrixPrintf(v, N, N, "v");
+	matrixPrintf(&v, NULL);
 #endif /* #if MATRIX_DEBUG */
 
 	/* E = m x n : 0 except on diagonal */
@@ -463,26 +458,27 @@ void computeColourBurstMatrices(float*** bestFitMatrixPtr, const unsigned int ca
 			{
 				Evalue = w[i];
 			}
-			E[i][j] = Evalue;
+			E.m_matrix[i][j] = Evalue;
 		}
 	}
 #if MATRIX_DEBUG
-	matrixPrintf(E, M, N, "E");
+	matrixPrintf(&E, NULL);
 #endif /* #if MATRIX_DEBUG */
 
 	/* UxE = U x E : U = m x m, E = m x n */
-	matrixMultiply(UxE, u, E, M, N, N);
+	matrixMultiply(&UxE, &u, &E);
 #if MATRIX_DEBUG
-	matrixPrintf(UxE, M, N, "UxE");
+	matrixPrintf(&UxE, NULL);
 #endif /* #if MATRIX_DEBUG */
-	matrixTranspose(vTranspose, v, N, N);
+	matrixTranspose(&vTranspose, &v);
 	/* jakeTemp1 = (U x E) x V* = UxE * v : UxE = m x n, V* = n x n */
-	matrixMultiply(jakeTemp1, UxE, vTranspose, M, N, N);
+	matrixMultiply(&jakeTemp1, &UxE, &vTranspose);
 #if MATRIX_DEBUG
-	matrixPrintf(jakeTemp1, M, N, "UxExV*");
+	matrixPrintf(&jakeTemp1, "UxExV*");
 #endif /* #if MATRIX_DEBUG */
 
 	/* B = V x E+ x U* x Y */
+	/* M = NxN * NxM * MxM * M */
 	/* B = best fit values */
 	/* E+ = E but with diagonal non-zero elements inverted */	
 	/* Y = vector of samples */
@@ -500,39 +496,41 @@ void computeColourBurstMatrices(float*** bestFitMatrixPtr, const unsigned int ca
 					Evalue = 1.0f / w[i];
 				}
 			}
-			Eplus[i][j] = Evalue;
+			Eplus.m_matrix[i][j] = Evalue;
 		}
 	}
 #if MATRIX_DEBUG
-	matrixPrintf(Eplus, N, M, "E+");
+	matrixPrintf(&Eplus, NULL);
 #endif /* #if MATRIX_DEBUG */
-	/* VxE+ */
-	matrixMultiply(VxEplus, v, Eplus, N, N, M);
+	/* VxE+ = V  * E+  */
+	/* NxM  =	NxN * NxM */
+	matrixMultiply(&VxEplus, &v, &Eplus);
 #if MATRIX_DEBUG
-	matrixPrintf(VxEplus, N, M, "VxEplus");
+	matrixPrintf(&VxEplus, NULL);
 #endif /* #if MATRIX_DEBUG */
-	/* B = V  * E+  *	U*  *	Y */
-	/*		NxN * NxM * MxM * M*/
-	matrixTranspose(uTranspose, u, M, M);
+	matrixTranspose(&uTranspose, &u);
 #if MATRIX_DEBUG
-	matrixPrintf(uTranspose, M, M, "uTranspose");
+	matrixPrintf(&uTranspose, NULL);
 #endif /* #if MATRIX_DEBUG */
-	matrixMultiply(bestFitMatrix, VxEplus, uTranspose, N, M, M);
+	/* bestFitMatrix = V x E+ x U* */
+	/* NxM           = NxN * NxM * MxM */
+	/* bestFitMatrix = VxE+ x U* */
+	/* NxM           = NxM * MxM */
+	matrixMultiply(bestFitMatrixPtr, &VxEplus, &uTranspose);
 #if MATRIX_DEBUG
-	matrixPrintf(bestFitMatrix, N, M, "VxEplusxU*");
+	matrixPrintf(bestFitMatrixPtr, "VxEplusxU*");
 #endif /* #if MATRIX_DEBUG */
-	*bestFitMatrixPtr = bestFitMatrix;
 
-	matrixFree(a, M);
-	matrixFree(u, M);
-	matrixFree(uTranspose, M);
-	matrixFree(v, N);
-	matrixFree(vTranspose, N);
-	matrixFree(UxE, M);
-	matrixFree(E, M);
-	matrixFree(Eplus, N);
-	matrixFree(VxEplus, N);
-	matrixFree(jakeTemp1, M);
+	matrixFree(&a);
+	matrixFree(&u);
+	matrixFree(&uTranspose);
+	matrixFree(&v);
+	matrixFree(&vTranspose);
+	matrixFree(&UxE);
+	matrixFree(&E);
+	matrixFree(&Eplus);
+	matrixFree(&VxEplus);
+	matrixFree(&jakeTemp1);
 }
 
 void testColourBurstMatrix(void)
@@ -541,14 +539,14 @@ void testColourBurstMatrix(void)
 	const unsigned int N = COLOUR_BURST_N;
 	unsigned int i;
 	unsigned int carrierPhase;
-	float** bestFitMatrix = NULL;
-	float** samples;
-	float** bestFitCoeffs;
+	NtscMatrix bestFitMatrix;
+	NtscMatrix samples;
+	NtscMatrix bestFitCoeffs;
 	float coeffA = 0.0f;
 	float coeffB = 0.0f;
 
-	samples = matrixMalloc(M, 1);
-	bestFitCoeffs = matrixMalloc(M, 1);
+	matrixCreate(&samples, M, 1, "samples");
+	matrixCreate(&bestFitCoeffs, N, 1, "bestFitCoeffs");
 
 	carrierPhase = 0;
 	computeColourBurstMatrices(&bestFitMatrix, carrierPhase);
@@ -560,17 +558,18 @@ void testColourBurstMatrix(void)
 		const float angle = (33.0f + ((float)(i+carrierPhase)*90.0f)) * (float)M_PI/180.0f;
 		const float sinC = (float)sinf(angle);
 		const float cosC = (float)cosf(angle);
-		samples[i][0] = coeffA*sinC + coeffB*cosC;
+		samples.m_matrix[i][0] = coeffA*sinC + coeffB*cosC;
 	}
 #if MATRIX_DEBUG
-	matrixPrintf(samples, M, 1, "samples");
+	matrixPrintf(&samples, NULL);
 #endif /* #if MATRIX_DEBUG */
-	matrixMultiply(bestFitCoeffs, bestFitMatrix, samples, N, M, 1);
+	/* NxM * Mx1 */
+	matrixMultiply(&bestFitCoeffs, &bestFitMatrix, &samples);
 #if MATRIX_DEBUG
-	matrixPrintf(bestFitCoeffs, M, 1, "bestFitCoeffs");
+	matrixPrintf(&bestFitCoeffs, NULL);
 #endif /* #if MATRIX_DEBUG */
 	printf("Input A:%f B:%f\n", coeffA, coeffB);
-	printf("BestFit A:%f B:%f\n", bestFitCoeffs[0][0], bestFitCoeffs[1][0]);
+	printf("BestFit A:%f B:%f\n", bestFitCoeffs.m_matrix[0][0], bestFitCoeffs.m_matrix[1][0]);
 
 	coeffA = +0.0f;
 	coeffB = +1.0f;
@@ -579,17 +578,17 @@ void testColourBurstMatrix(void)
 		const float angle = (33.0f + ((float)(i+carrierPhase)*90.0f)) * (float)M_PI/180.0f;
 		const float sinC = (float)sinf(angle);
 		const float cosC = (float)cosf(angle);
-		samples[i][0] = coeffA*sinC + coeffB*cosC;
+		samples.m_matrix[i][0] = coeffA*sinC + coeffB*cosC;
 	}
 #if MATRIX_DEBUG
-	matrixPrintf(samples, M, 1, "samples");
+	matrixPrintf(&samples, NULL);
 #endif /* #if MATRIX_DEBUG */
-	matrixMultiply(bestFitCoeffs, bestFitMatrix, samples, N, M, 1);
+	matrixMultiply(&bestFitCoeffs, &bestFitMatrix, &samples);
 #if MATRIX_DEBUG
-	matrixPrintf(bestFitCoeffs, M, 1, "bestFitCoeffs");
+	matrixPrintf(&bestFitCoeffs, NULL);
 #endif /* #if MATRIX_DEBUG */
 	printf("Input A:%f B:%f\n", coeffA, coeffB);
-	printf("BestFit A:%f B:%f\n", bestFitCoeffs[0][0], bestFitCoeffs[1][0]);
+	printf("BestFit A:%f B:%f\n", bestFitCoeffs.m_matrix[0][0], bestFitCoeffs.m_matrix[1][0]);
 }
 
 /* Public API */

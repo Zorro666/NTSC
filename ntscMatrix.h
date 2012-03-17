@@ -3,24 +3,19 @@
 
 #define MATRIX_DEBUG 0
 
-typedef struct ntscMatrix
+typedef struct NtscMatrix
 {
 	float** m_matrix;
-	int m_numRows;
-	int m_numCols;
-} ntscMatrix;
+	unsigned int m_numRows;
+	unsigned int m_numCols;
+	const char* m_name;
+} NtscMatrix;
 
-float** matrixMalloc(const unsigned int numRows, const unsigned int numCols);
-
-void matrixFree(float** matrix, const unsigned int numRows);
-
-void matrixPrintf(float** mat, unsigned int numRows, unsigned int numCols, const char* const name);
-
-void matrixMultiply(float** result, float** left, float** right, 
-									  const unsigned int numRowsLeft, const unsigned int numColsLeft, 
-										const unsigned int numColsRight);
-
-void matrixTranspose(float** transpose, float** matrix, const unsigned int numRows, const unsigned int numCols);
+void matrixCreate(NtscMatrix* const ntscMatrix, const unsigned int numRows, const unsigned int numCols, const char* const name);
+void matrixFree(NtscMatrix* const ntscMatrix);
+void matrixPrintf(const NtscMatrix* const ntscMatrix, const char* const inputName);
+void matrixMultiply(NtscMatrix* const ntscResult, const NtscMatrix* const ntscLeft, const NtscMatrix* const ntscRight);
+void matrixTranspose(NtscMatrix* const ntscTranspose, const NtscMatrix* const ntscMatrix);
 
 #endif /* #ifndef NTSCMATRIX_H */
 
