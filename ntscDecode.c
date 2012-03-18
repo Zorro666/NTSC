@@ -81,12 +81,9 @@ static float s_CHROMA_T = 0.0f;
 static int s_pixelPos = 0;
 static int s_xpos = 0;
 static int s_ypos = 0;
-static int s_colourBurstTotal = 0;
-static float s_colourBurstSamples[4];
 static NtscMatrix s_colourBurstSamplePoints;
 static NtscMatrix s_colourBurstBestFitMatrix;
 static NtscMatrix s_colourBurstBestFitCoeffs;
-static float s_colourBurstAvg = 0.0f;
 
 static int s_syncSamples = 0;
 static int s_blankSamples = 0;
@@ -101,6 +98,7 @@ static int s_vsyncFound = 0;
 static int s_hsyncFound = 0;
 static int s_hsyncPosition = 0;
 static int s_colourBurstFound = 0;
+static int s_colourBurstTotal = 0;
 
 static float s_contrast = 1.00f;
 static float s_brightness = 0.0f;
@@ -731,116 +729,47 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			const int colourBurstLookEnd = colourBurstEnd - 8;
 			if (s_sampleCounter < colourBurstLookStart)
 			{
-				s_colourBurstTotal = 0;
-				s_colourBurstAvg = 0.0f;
-				s_colourBurstSamples[0] = 0.0f;
-				s_colourBurstSamples[1] = 0.0f;
-				s_colourBurstSamples[2] = 0.0f;
-				s_colourBurstSamples[3] = 0.0f;
 				sampleAtStart = s_ntscSamples;
+				s_colourBurstTotal = 0;
 			}
 			if ((s_sampleCounter >= colourBurstLookStart) && (s_sampleCounter < colourBurstLookEnd))
 			{
 				int burstSamplePoint;
-				int burstSampleIndex = (s_samplesPerField ) & 0x3;
-				burstSampleIndex = (s_hsyncPosition + s_sampleCounter) & 0x3;
-
 				burstSamplePoint = (s_sampleCounter - colourBurstLookStart);
 				burstSamplePoint += sampleAtStart;
 
-				burstSampleIndex = burstSamplePoint;
-
 				burstSamplePoint = burstSamplePoint%20;
-				burstSampleIndex &= 0x3;
 				/* We are in the colour burst phase */
-				s_colourBurstTotal += (compositeSignal*compositeSignal);
-				s_colourBurstSamples[burstSampleIndex] = s_colourBurstSamples[burstSampleIndex] * 0.5f + 0.5f*(float)compositeSignal;
 				s_colourBurstSamplePoints.m_matrix[burstSamplePoint][0] = (float)compositeSignal;
+				s_colourBurstTotal += (compositeSignal*compositeSignal);
 			}
 			if (s_sampleCounter >= colourBurstLookEnd)
 			{
 				if (s_colourBurstTotal > 1)
 				{
-					float bI;
-					float bQ;
-					float sinC = (float)sinf(33.0f * (float)M_PI/180.0f);
-					float cosC = (float)cosf(33.0f * (float)M_PI/180.0f);
-					const int numSamples = (colourBurstLookEnd-colourBurstLookStart);
-					s_colourBurstSamples[0] /= (float)(numSamples/4);
-					s_colourBurstSamples[1] /= (float)(numSamples/4);
-					s_colourBurstSamples[2] /= (float)(numSamples/4);
-					s_colourBurstSamples[3] /= (float)(numSamples/4);
-					s_colourBurstAvg = (float)sqrtf((float)s_colourBurstTotal) / (float)(numSamples);
+					const float burstA = s_colourBurstBestFitCoeffs.m_matrix[0][0];
+					const float burstB = s_colourBurstBestFitCoeffs.m_matrix[1][0];
+					const float burstOmega = atan2f(burstB, burstA);
+					const float burstTheta = burstOmega;
+					float newVals[4];
+					newVals[0] = sinf(burstTheta+(float)(90.0f*(M_PI/180.0f)));
+					newVals[1] = cosf(burstTheta+(float)(90.0f*(M_PI/180.0f)));
+					newVals[2] = sinf(burstTheta+(float)(270.0f*(M_PI/180.0f)));
+					newVals[3] = cosf(burstTheta+(float)(270.0f*(M_PI/180.0f)));
 
-					bI = s_colourBurstSamples[2]-s_colourBurstSamples[0]; 
-					bQ = s_colourBurstSamples[3]-s_colourBurstSamples[1];
-					bI /= s_colourBurstAvg;
-					bQ /= s_colourBurstAvg;
-					/*
-				 	printf("y:%d colourBurstTotal:%d avg:%f\n", s_ypos, s_colourBurstTotal, s_colourBurstAvg);
-					*/
-/*
-C = sin(at+b)*cos(at) = cos(at)*sin(at)*cos(b)+cos(at)*cos(at)*sin(b)
-D = cos(at+b)*sin(at) = sin(at)*cos(at)*cos(b)-sin(at)*sin(at)*sin(b)
-C - D = sin(b)
-C = colour_burst_sample[2] * cos_colour_carrier
-D = colour_burst_sample[3] * sin_colour_carrier
-bI = sin(at+b)
-bQ = cos(at+b)
-
-the colour burst looks to be sin(-33 deg + omega*t)
-colour burst is 33 deg relative to Q
-
-A good glossary and information place:
-http://techpubs.sgi.com/library/dynaweb_docs/0530/SGI_Developer/books/Ind2Vid_PG/sgi_html/go01.html
-
-cos(at+b) = (sin(180+at+b)-sin(at+b))*sin_colour_carrier - (cos(at+b+180)-cos(at+b))*cos_colour_carrier
-cos(at+b) = sin(180+at+b)*sin_colour_carrier - cos(at+b+180)*cos_colour_carrier -
-          = sin(at+b)*sin_colour_carrier - cos(at+b)*cos_colour_carrier
-*/
-					/*
-					printf("jI:%d h:%d sam:%d y:%d n:%d a:%f burstSamples:%.3ff, %.3ff, %.3ff, %.3f\n", 
-							s_jakeI&0x3, s_hsyncPosition&0x3, sampleAtStart&0x3, 
-							s_ypos, 
-							numSamples,
-							s_colourBurstAvg,
-							s_colourBurstSamples[0], s_colourBurstSamples[1], s_colourBurstSamples[2], s_colourBurstSamples[3]
-							);
-					*/
-					/*
-					printf("sinC:%f cosC:%f bI:%f bQ:%f vals:%f, %f\n", 
-							sinC, cosC, bI, bQ, 
-							(bI * cosC + bQ * sinC),
-							(bI * sinC - bQ * cosC));
-					*/
-
-					s_jakeVals[0] = bI * sinC - bQ * cosC;
-					s_jakeVals[1] = bI * cosC + bQ * sinC;
-					s_jakeVals[2] = -s_jakeVals[0];
-					s_jakeVals[3] = -s_jakeVals[1];
-
+					matrixMultiply(&s_colourBurstBestFitCoeffs, &s_colourBurstBestFitMatrix, &s_colourBurstSamplePoints);
+#if 0
 					{
-						const float burstA = s_colourBurstBestFitCoeffs.m_matrix[0][0];
-						const float burstB = s_colourBurstBestFitCoeffs.m_matrix[1][0];
 						const float burstK = sqrtf(burstA*burstA + burstB*burstB);
-						const float burstOmega = atan2f(burstB, burstA);
-						const float burstTheta = burstOmega;
-						float newVals[4];
-						newVals[0] = sinf(burstTheta+(float)(90.0f*(M_PI/180.0f)));
-						newVals[1] = cosf(burstTheta+(float)(90.0f*(M_PI/180.0f)));
-						newVals[2] = sinf(burstTheta+(float)(270.0f*(M_PI/180.0f)));
-						newVals[3] = cosf(burstTheta+(float)(270.0f*(M_PI/180.0f)));
-
-						matrixMultiply(&s_colourBurstBestFitCoeffs, &s_colourBurstBestFitMatrix, &s_colourBurstSamplePoints);
 						printf("y:%d BestFit A:%f B:%f K:%f omega:%f\n", s_ypos, burstA, burstB, burstK, (float)burstOmega*(180.0f/M_PI));
 						printf("y:%d newVals:%f %f %f %f\n", s_ypos, newVals[0], newVals[1], newVals[2], newVals[3]);
-						printf("y:%d oldVals:%f %f %f %f\n", s_ypos, s_jakeVals[0], s_jakeVals[1], s_jakeVals[2], s_jakeVals[3]);
-
-						s_jakeVals[0] = newVals[0];
-						s_jakeVals[1] = newVals[1];
-						s_jakeVals[2] = newVals[2];
-						s_jakeVals[3] = newVals[3];
 					}
+#endif /* #if 0 */
+
+					s_jakeVals[0] = newVals[0];
+					s_jakeVals[1] = newVals[1];
+					s_jakeVals[2] = newVals[2];
+					s_jakeVals[3] = newVals[3];
 				}
 				else
 				{
