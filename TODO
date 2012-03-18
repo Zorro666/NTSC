@@ -1,12 +1,11 @@
 High
-* NTSC - Add HSYNC detection - print num samples per line for each row
+* NTSC - scaling values for smpte colour bars: gamma, brightness, contrast, IQ scaling
+* NTSC - sort out colour burst angle offsets instead of +90, +270 - comment why those values are correct
+* NTSC - Work out hacked in scaling for IQ values
+* NTSC - use a filter generation program to find LPF weights: 0.25 (Y, I, Q), HSYNC, VSYNC long LPFs
 
 Medium
-* NTSC - Add VSYNC detection
-* NTSC - Add colour carrier phase sync up
-* NTSC - Work out hacked in scaling for IQ values
 * NTSC - Convert to fixed point instead of floats
-* NTSC - use a filter generation program to find LPF weights: 0.25 (Y, I, Q), HSYNC, VSYNC long LPFs
 
 Low
 * Tint, brightness
@@ -14,4 +13,4 @@ Low
 Future
 * Debug options: zoom, pan
 * Debug options: single frame, frame step
-* Debug options: graph window: h-sync, v-sync,  h-lines
+* Debug options: graph window: h-sync, v-sync, h-lines
