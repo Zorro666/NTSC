@@ -599,6 +599,85 @@ static void initColourBurstData(void)
 	testColourBurstMatrix();
 }
 
+static void ntscEncodeTest(void)
+{
+	unsigned int x;
+	unsigned int y;
+	unsigned int f;
+
+	unsigned int sampleCounter = 0;
+	const size_t frameSize = NTSC_LINES_PER_FRAME*NTSC_SAMPLES_PER_LINE;
+	unsigned char* const output = malloc(frameSize);
+	FILE* file = NULL;
+	const char* const fileName ="jake.ntsc";
+	size_t numBytesWritten = 0;
+
+	for (f = 0; f < 2; f++)
+	{
+		for (y = f; y < NTSC_LINES_PER_FRAME; y+=2)
+		{
+			for (x = 0; x < NTSC_SAMPLES_PER_LINE; x++)
+			{
+				unsigned char sampleValue = 255;
+				if (y < 30)
+				{
+					sampleValue = NTSC_VALUE_BLANK;
+				}
+				if (y > NTSC_LINES_PER_FRAME-3)
+				{
+					if (x < 400)
+					{
+						sampleValue = NTSC_VALUE_SYNC;
+					}
+				}
+				if (sampleValue == 255)
+				{
+					if (x < NTSC_COLOUR_BURST_START_SAMPLE)
+					{
+						/* Blank the start the line */
+						sampleValue = NTSC_VALUE_BLANK;
+					}
+					if ((x >= NTSC_COLOUR_BURST_START_SAMPLE) && (x < (NTSC_COLOUR_BURST_START_SAMPLE+NTSC_COLOUR_BURST_LENGTH_SAMPLE)))
+					{
+						/* Output the colour burst */
+						sampleValue = 200;
+					}
+					if (x < 100)
+					{
+						sampleValue = NTSC_VALUE_SYNC;
+					}
+					if (x > (NTSC_SAMPLES_PER_LINE-70))
+					{
+						/* Output the HSYNC signal */
+						sampleValue = NTSC_VALUE_SYNC;
+					}
+					if (sampleValue == 255)
+					{
+						/* Do normal line encoding */
+						sampleValue = 250;
+					}
+				}
+				output[sampleCounter] = sampleValue;
+				sampleCounter++;
+			}
+		}
+	}
+	file = fopen(fileName, "wb");
+	if (file == NULL)
+	{
+		fprintf(stderr, "ERROR can't open NTSC data file '%s'\n", fileName);
+		return;
+	}
+	numBytesWritten = fwrite((void*)output, 1, frameSize, file);
+	if (numBytesWritten != frameSize)
+	{
+		fprintf(stderr, "ERROR writing frame data '%s' %d != %d\n", fileName, numBytesWritten, frameSize);
+		return;
+	}
+	fclose(file);
+	free(output);
+}
+
 /* Public API */
 void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 {
@@ -649,6 +728,8 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 	s_colourBurstFound = 0;
 
 	computeGammaTable();
+
+	ntscEncodeTest();
 }
 
 void ntscDecodeAddSample(const unsigned char sampleValue)
@@ -758,7 +839,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 					newVals[3] = cosf(burstTheta+(float)(270.0f*(M_PI/180.0f)));
 
 					matrixMultiply(&s_colourBurstBestFitCoeffs, &s_colourBurstBestFitMatrix, &s_colourBurstSamplePoints);
-#if 0
+#if 1
 					{
 						const float burstK = sqrtf(burstA*burstA + burstB*burstB);
 						printf("y:%d BestFit A:%f B:%f K:%f omega:%f\n", s_ypos, burstA, burstB, burstK, (float)burstOmega*(180.0f/M_PI));
@@ -786,7 +867,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		if (hsyncFound == 1)
 		{
 			/* HSYNC */
-			/*printf("\tHSYNC x:%d y:%d\n", s_xpos, s_ypos);*/
+			printf("\tHSYNC x:%d y:%d\n", s_xpos, s_ypos);
 
 			s_xpos = 0;
 			lineInit();
@@ -812,9 +893,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		if ((vsyncFound == 1) && (s_vsyncFound == 0))
 		{
 			/* VSYNC */
-			/*
 			printf("VSYNC x:%d y:%d syncSamples:%d samples:%d\n", s_xpos, s_ypos, s_syncSamples, s_samplesPerField);
-			*/
 			s_fieldCounter++;
 			s_ypos = s_fieldCounter & 0x1;
 			if (displayFlags & DISPLAY_INTERLACED)

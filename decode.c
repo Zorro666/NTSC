@@ -59,6 +59,7 @@ int main(int argc, char* argv[])
 		"flightsim.ntsc",
 		"penelope.ntsc",
 		"nes_palette.ntsc",
+		"jake.ntsc",
 		NULL
 	};
 
