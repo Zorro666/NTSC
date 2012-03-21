@@ -613,6 +613,29 @@ static void ntscEncodeTest(void)
 	size_t numBytesWritten = 0;
 	float carrierAngle = 33.0f*((float)M_PI/180.0f);
 
+	const unsigned int NES_RGB_HEIGHT = 262;
+	const unsigned int NES_RGB_WIDTH = 341;
+	unsigned int* nesRGB = malloc(NES_RGB_HEIGHT*NES_RGB_WIDTH*sizeof(unsigned int));
+	size_t numBytesRead = 0;
+
+	file = fopen("nes.rgb", "rb");
+	if (file == NULL)
+	{
+		fprintf(stderr, "ERROR can't open NES rgb data file '%s'\n", fileName);
+		return;
+	}
+	for (y = 0; y < NES_RGB_HEIGHT; y++)
+	{
+		for (x = 0; x < NES_RGB_WIDTH; x++)
+		{
+			unsigned int rgbValue;
+			numBytesRead += fread(&rgbValue, 1, sizeof(unsigned int), file);
+			nesRGB[y*NES_RGB_WIDTH+x] = rgbValue;
+		}
+	}
+	printf("%d bytes read from '%s' width:%d height:%d\n", numBytesRead, fileName, NES_RGB_WIDTH, NES_RGB_HEIGHT);
+	fclose(file);
+
 	for (f = 0; f < 2; f++)
 	{
 		for (y = f; y < NTSC_LINES_PER_FRAME; y+=2)
@@ -675,17 +698,31 @@ static void ntscEncodeTest(void)
 						float I;
 						float Q;
 
-						pixelRGB = 0x00FFFFFF;
-						pixelR = ((pixelRGB >> 0)& 0xFF);
+						unsigned int nesY;
+						unsigned int nesX;
+
+						pixelRGB = 0x00000000;
+						nesY = y/2 - 20;
+						if (nesY < NES_RGB_HEIGHT)
+						{
+							nesX = x/2 - 100;
+							if (nesX < NES_RGB_WIDTH)
+							{
+								pixelRGB = nesRGB[nesY*NES_RGB_WIDTH+nesX];
+							}
+						}
+						pixelR = ((pixelRGB >> 16)& 0xFF);
 						pixelG = ((pixelRGB >> 8)& 0xFF);
-						pixelB = ((pixelRGB >> 16)& 0xFF);
+						pixelB = ((pixelRGB >> 0)& 0xFF);
 						R = (float)pixelR;
 						G = (float)pixelG;
 						B = (float)pixelB;
 
+#if 0
 						R *= ((float)x/200.0f);
 						G *= ((float)x/100.0f);
 						B *= ((float)y/100.0f);
+#endif /* #if 0 */
 						R = clampFloat(R, 0.0f, 255.0f);
 						G = clampFloat(G, 0.0f, 255.0f);
 						B = clampFloat(B, 0.0f, 255.0f);
@@ -887,7 +924,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 					newVals[3] = cosf(burstTheta+(float)(270.0f*(M_PI/180.0f)));
 
 					matrixMultiply(&s_colourBurstBestFitCoeffs, &s_colourBurstBestFitMatrix, &s_colourBurstSamplePoints);
-#if 1
+#if 0
 					{
 						const float burstK = sqrtf(burstA*burstA + burstB*burstB);
 						printf("y:%d BestFit A:%f B:%f K:%f omega:%f\n", s_ypos, burstA, burstB, burstK, (float)burstOmega*(180.0f/M_PI));
