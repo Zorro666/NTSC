@@ -611,6 +611,7 @@ static void ntscEncodeTest(void)
 	FILE* file = NULL;
 	const char* const fileName ="jake.ntsc";
 	size_t numBytesWritten = 0;
+	float carrierAngle = 33.0f*((float)M_PI/180.0f);
 
 	for (f = 0; f < 2; f++)
 	{
@@ -618,47 +619,94 @@ static void ntscEncodeTest(void)
 		{
 			for (x = 0; x < NTSC_SAMPLES_PER_LINE; x++)
 			{
-				unsigned char sampleValue = 255;
+				unsigned char sampleValue;
+				int sampleComputed = 0;
 				if (y < 30)
 				{
 					sampleValue = NTSC_VALUE_BLANK;
+					sampleComputed = 1;
 				}
 				if (y > NTSC_LINES_PER_FRAME-3)
 				{
 					if (x < 400)
 					{
 						sampleValue = NTSC_VALUE_SYNC;
+						sampleComputed = 1;
 					}
 				}
-				if (sampleValue == 255)
+				if (sampleComputed == 0)
 				{
-					if (x < NTSC_COLOUR_BURST_START_SAMPLE)
+					if (x < NTSC_COLOUR_BURST_START_SAMPLE-10)
 					{
 						/* Blank the start the line */
 						sampleValue = NTSC_VALUE_BLANK;
+						sampleComputed = 1;
 					}
-					if ((x >= NTSC_COLOUR_BURST_START_SAMPLE) && (x < (NTSC_COLOUR_BURST_START_SAMPLE+NTSC_COLOUR_BURST_LENGTH_SAMPLE)))
+					else if (x < (NTSC_COLOUR_BURST_START_SAMPLE+NTSC_COLOUR_BURST_LENGTH_SAMPLE))
 					{
 						/* Output the colour burst */
-						sampleValue = 200;
-					}
-					if (x < 100)
-					{
-						sampleValue = NTSC_VALUE_SYNC;
+						float outputValue;
+						float colourBurstAmplitude = 30.0f;
+						float colourBurstAngle = carrierAngle-33.0f*((float)M_PI/180.0f);
+
+						outputValue = colourBurstAmplitude*sinf(colourBurstAngle);
+						sampleValue = (unsigned char)(NTSC_VALUE_BLANK + outputValue);
+						sampleComputed = 1;
 					}
 					if (x > (NTSC_SAMPLES_PER_LINE-70))
 					{
 						/* Output the HSYNC signal */
 						sampleValue = NTSC_VALUE_SYNC;
+						sampleComputed = 1;
 					}
-					if (sampleValue == 255)
+					if (sampleComputed == 0)
 					{
 						/* Do normal line encoding */
-						sampleValue = 250;
+						/* RGBA format */
+						unsigned int pixelRGB;
+						unsigned char pixelR;
+						unsigned char pixelG;
+						unsigned char pixelB;
+						float R;
+						float G;
+						float B;
+						float outputValue;
+						float Y;
+						float I;
+						float Q;
+
+						pixelRGB = 0x00FFFFFF;
+						pixelR = ((pixelRGB >> 0)& 0xFF);
+						pixelG = ((pixelRGB >> 8)& 0xFF);
+						pixelB = ((pixelRGB >> 16)& 0xFF);
+						R = (float)pixelR;
+						G = (float)pixelG;
+						B = (float)pixelB;
+
+						R *= ((float)x/200.0f);
+						G *= ((float)x/100.0f);
+						B *= ((float)y/100.0f);
+						R = clampFloat(R, 0.0f, 255.0f);
+						G = clampFloat(G, 0.0f, 255.0f);
+						B = clampFloat(B, 0.0f, 255.0f);
+						Y = 0.299f*R+0.587f*G+0.114f*B;
+						I = 0.595716f*R-0.274452f*G-0.321263f*B;
+						Q = 0.211456f*R-0.522591f*G+0.311135f*B;
+
+						outputValue = Y+Q*sinf(carrierAngle)+I*cosf(carrierAngle);
+						outputValue = clampFloat(outputValue, 0.0f, 255.0f);
+						outputValue = (outputValue/255.0f)*(NTSC_VALUE_WHITE-NTSC_VALUE_BLACK);
+						sampleValue = (unsigned char)(NTSC_VALUE_BLACK + outputValue);
+						sampleComputed = 1;
 					}
 				}
 				output[sampleCounter] = sampleValue;
 				sampleCounter++;
+				carrierAngle += ((float)M_PI/2.0f);
+				if (carrierAngle > (float)(2.0f*M_PI))
+				{
+					carrierAngle -= (float)(2.0f*M_PI);
+				}
 			}
 		}
 	}
@@ -867,7 +915,9 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		if (hsyncFound == 1)
 		{
 			/* HSYNC */
+#if 0
 			printf("\tHSYNC x:%d y:%d\n", s_xpos, s_ypos);
+#endif /* #if 0 */
 
 			s_xpos = 0;
 			lineInit();
@@ -893,7 +943,9 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		if ((vsyncFound == 1) && (s_vsyncFound == 0))
 		{
 			/* VSYNC */
+#if 0
 			printf("VSYNC x:%d y:%d syncSamples:%d samples:%d\n", s_xpos, s_ypos, s_syncSamples, s_samplesPerField);
+#endif /* #if 0 */
 			s_fieldCounter++;
 			s_ypos = s_fieldCounter & 0x1;
 			if (displayFlags & DISPLAY_INTERLACED)
