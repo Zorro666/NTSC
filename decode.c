@@ -48,7 +48,7 @@ int main(int argc, char* argv[])
 	int i;
 	unsigned char* ntscDataPtr = NULL;
 	unsigned int ntscDataSize = 0;
-	unsigned int ntscFilenameIndex = 0;
+	unsigned int ntscFilenameIndex = 6;
 	const char* ntscFilename = NULL;
 	unsigned int* texture;
 
