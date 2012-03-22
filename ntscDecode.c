@@ -1,3 +1,13 @@
+/*
+RAW VALUES $17 R:228 G:92 B:16 Y:123 I:105 Q:5
+JAT ENCODE $17 R:177 G:66 B:5 Y:92 I:85 Q:4
+NES ENCODE $17 R:170 G:18 B:0 Y:56 I:111 Q:12
+
+RAW VALUES $21 R:60 G:188 B:252 Y:157 I:-96 Q:-7
+JAT ENCODE $21 R:34 G:139 B:190 Y:114 I:-78 Q:-6
+NES ENCODE $21 R:0 G:153 B:217 Y:114 I:-112 Q:-12
+*/
+
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -100,10 +110,11 @@ static int s_hsyncPosition = 0;
 static int s_colourBurstFound = 0;
 static int s_colourBurstTotal = 0;
 
-static float s_contrast = 1.00f;
+static float s_contrast = 1.0f;
+
 static float s_brightness = 0.0f;
 
-static float s_gammaValue = 0.5f;
+static float s_gammaValue = 1.0f;
 
 static const char* const DISPLAY_MODES[] = {
 	"RGB",
@@ -729,6 +740,10 @@ static void ntscEncodeTest(void)
 						Y = 0.299f*R+0.587f*G+0.114f*B;
 						I = 0.595716f*R-0.274452f*G-0.321263f*B;
 						Q = 0.211456f*R-0.522591f*G+0.311135f*B;
+						if ((x%600 == 599) && (y%300 == 299))
+						{
+							printf("JAT R:%d G:%d B:%d Y:%d I:%d Q:%d\n", (int)R, (int)G, (int)B, (int)Y, (int)I, (int)Q);
+						}
 
 						outputValue = Y+Q*sinf(carrierAngle)+I*cosf(carrierAngle);
 						outputValue = clampFloat(outputValue, 0.0f, 255.0f);
@@ -939,7 +954,9 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 				}
 				else
 				{
+#if 0
 					printf("Monochrome line - no colour burst y:%d\n", s_ypos);
+#endif /* #if 0 */
 				}
 				s_colourBurstFound = 1;
 			}
@@ -1040,6 +1057,10 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			Y = (int)yval;
 			I = (int)ival;
 			Q = (int)qval;
+			if ((s_xpos%600 == 599) && (s_ypos%300 == 299))
+			{
+				printf("NES R:%d G:%d B:%d Y:%d I:%d Q:%d\n", R, G, B, Y, I, Q);
+			}
 		}
 		if (displayMode == DISPLAY_RGB)
 		{
