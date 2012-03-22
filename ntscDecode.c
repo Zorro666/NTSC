@@ -83,14 +83,21 @@ D = colour_burst_sample[3] * sin_colour_carrier
 
 */
 
+static unsigned int s_encodeXpos;
+static unsigned int s_encodeYpos;
+static float s_encodeCarrierAngle;
+static unsigned char* s_encodeOutput;
+static unsigned int s_encodeSampleCounter;
+static unsigned int s_encodeOutputSize;
+
 static int s_decodeOption = DECODE_JAKE;
 static int s_displayModeFlags = DISPLAY_RGB | (DISPLAY_INTERLACED << 16);
 static unsigned int* s_pVideoMemoryBGRA = NULL;
 
 static float s_CHROMA_T = 0.0f;
 static int s_pixelPos = 0;
-static int s_xpos = 0;
-static int s_ypos = 0;
+static int s_decodeXpos = 0;
+static int s_decodeYpos = 0;
 static NtscMatrix s_colourBurstSamplePoints;
 static NtscMatrix s_colourBurstBestFitMatrix;
 static NtscMatrix s_colourBurstBestFitCoeffs;
@@ -610,172 +617,132 @@ static void initColourBurstData(void)
 	testColourBurstMatrix();
 }
 
-static void ntscEncodeTest(void)
+/* Public API */
+void ntscEncodeInit(unsigned char* pOutputSignal, const unsigned int outputSize)
 {
-	unsigned int x;
-	unsigned int y;
-	unsigned int f;
+	s_encodeCarrierAngle = 33.0f*((float)M_PI/180.0f);
+	s_encodeOutput = pOutputSignal;
+	s_encodeSampleCounter = 0;
+	s_encodeOutputSize = outputSize;
+	s_encodeXpos = 0;
+	s_encodeYpos = 0;
+}
 
-	unsigned int sampleCounter = 0;
-	const size_t frameSize = NTSC_LINES_PER_FRAME*NTSC_SAMPLES_PER_LINE;
-	unsigned char* const output = malloc(frameSize);
-	FILE* file = NULL;
-	const char* const fileName ="jake.ntsc";
-	size_t numBytesWritten = 0;
-	float carrierAngle = 33.0f*((float)M_PI/180.0f);
-
-	const unsigned int NES_RGB_HEIGHT = 262;
-	const unsigned int NES_RGB_WIDTH = 341;
-	unsigned int* nesRGB = malloc(NES_RGB_HEIGHT*NES_RGB_WIDTH*sizeof(unsigned int));
-	size_t numBytesRead = 0;
-
-	file = fopen("nes.rgb", "rb");
-	if (file == NULL)
+unsigned char ntscEncodeAddSample(const unsigned int RGB)
+{
+	unsigned char sampleValue;
+	int sampleComputed = 0;
+	if (s_encodeYpos < 30)
 	{
-		fprintf(stderr, "ERROR can't open NES rgb data file '%s'\n", fileName);
-		return;
+		sampleValue = NTSC_VALUE_BLANK;
+		sampleComputed = 1;
 	}
-	for (y = 0; y < NES_RGB_HEIGHT; y++)
+	if (s_encodeYpos > NTSC_LINES_PER_FRAME-3)
 	{
-		for (x = 0; x < NES_RGB_WIDTH; x++)
+		if (s_encodeXpos < 400)
 		{
-			unsigned int rgbValue;
-			numBytesRead += fread(&rgbValue, 1, sizeof(unsigned int), file);
-			nesRGB[y*NES_RGB_WIDTH+x] = rgbValue;
+			sampleValue = NTSC_VALUE_SYNC;
+			sampleComputed = 1;
 		}
 	}
-	printf("%d bytes read from '%s' width:%d height:%d\n", numBytesRead, fileName, NES_RGB_WIDTH, NES_RGB_HEIGHT);
-	fclose(file);
-
-	for (f = 0; f < 2; f++)
+	if (sampleComputed == 0)
 	{
-		for (y = f; y < NTSC_LINES_PER_FRAME; y+=2)
+		if (s_encodeXpos < NTSC_COLOUR_BURST_START_SAMPLE-10)
 		{
-			for (x = 0; x < NTSC_SAMPLES_PER_LINE; x++)
-			{
-				unsigned char sampleValue;
-				int sampleComputed = 0;
-				if (y < 30)
-				{
-					sampleValue = NTSC_VALUE_BLANK;
-					sampleComputed = 1;
-				}
-				if (y > NTSC_LINES_PER_FRAME-3)
-				{
-					if (x < 400)
-					{
-						sampleValue = NTSC_VALUE_SYNC;
-						sampleComputed = 1;
-					}
-				}
-				if (sampleComputed == 0)
-				{
-					if (x < NTSC_COLOUR_BURST_START_SAMPLE-10)
-					{
-						/* Blank the start the line */
-						sampleValue = NTSC_VALUE_BLANK;
-						sampleComputed = 1;
-					}
-					else if (x < (NTSC_COLOUR_BURST_START_SAMPLE+NTSC_COLOUR_BURST_LENGTH_SAMPLE))
-					{
-						/* Output the colour burst */
-						float outputValue;
-						float colourBurstAmplitude = 30.0f;
-						float colourBurstAngle = carrierAngle-33.0f*((float)M_PI/180.0f);
+			/* Blank the start the line */
+			sampleValue = NTSC_VALUE_BLANK;
+			sampleComputed = 1;
+		}
+		else if (s_encodeXpos < (NTSC_COLOUR_BURST_START_SAMPLE+NTSC_COLOUR_BURST_LENGTH_SAMPLE))
+		{
+			/* Output the colour burst */
+			float outputValue;
+			float colourBurstAmplitude = 30.0f;
+			float colourBurstAngle = s_encodeCarrierAngle-33.0f*((float)M_PI/180.0f);
 
-						outputValue = colourBurstAmplitude*sinf(colourBurstAngle);
-						sampleValue = (unsigned char)(NTSC_VALUE_BLANK + outputValue);
-						sampleComputed = 1;
-					}
-					if (x > (NTSC_SAMPLES_PER_LINE-70))
-					{
-						/* Output the HSYNC signal */
-						sampleValue = NTSC_VALUE_SYNC;
-						sampleComputed = 1;
-					}
-					if (sampleComputed == 0)
-					{
-						/* Do normal line encoding */
-						/* RGBA format */
-						unsigned int pixelRGB;
-						unsigned char pixelR;
-						unsigned char pixelG;
-						unsigned char pixelB;
-						float R;
-						float G;
-						float B;
-						float outputValue;
-						float Y;
-						float I;
-						float Q;
+			outputValue = colourBurstAmplitude*sinf(colourBurstAngle);
+			sampleValue = (unsigned char)(NTSC_VALUE_BLANK + outputValue);
+			sampleComputed = 1;
+		}
+		if (s_encodeXpos > (NTSC_SAMPLES_PER_LINE-70))
+		{
+			/* Output the HSYNC signal */
+			sampleValue = NTSC_VALUE_SYNC;
+			sampleComputed = 1;
+		}
+		if (sampleComputed == 0)
+		{
+			/* Do normal line encoding */
+			/* RGBA format */
+			unsigned int pixelRGB;
+			unsigned char pixelR;
+			unsigned char pixelG;
+			unsigned char pixelB;
+			float R;
+			float G;
+			float B;
+			float outputValue;
+			float Y;
+			float I;
+			float Q;
 
-						unsigned int nesY;
-						unsigned int nesX;
-
-						pixelRGB = 0x00000000;
-						nesY = y/2 - 20;
-						if (nesY < NES_RGB_HEIGHT)
-						{
-							nesX = x/2 - 100;
-							if (nesX < NES_RGB_WIDTH)
-							{
-								pixelRGB = nesRGB[nesY*NES_RGB_WIDTH+nesX];
-							}
-						}
-						pixelR = ((pixelRGB >> 16)& 0xFF);
-						pixelG = ((pixelRGB >> 8)& 0xFF);
-						pixelB = ((pixelRGB >> 0)& 0xFF);
-						R = (float)pixelR;
-						G = (float)pixelG;
-						B = (float)pixelB;
+			pixelRGB = RGB;
+			pixelR = ((pixelRGB >> 16)& 0xFF);
+			pixelG = ((pixelRGB >> 8)& 0xFF);
+			pixelB = ((pixelRGB >> 0)& 0xFF);
+			R = (float)pixelR;
+			G = (float)pixelG;
+			B = (float)pixelB;
 
 #if 0
-						R *= ((float)x/200.0f);
-						G *= ((float)x/100.0f);
-						B *= ((float)y/100.0f);
+			R *= ((float)x/200.0f);
+			G *= ((float)x/100.0f);
+			B *= ((float)y/100.0f);
 #endif /* #if 0 */
-						R = clampFloat(R, 0.0f, 255.0f);
-						G = clampFloat(G, 0.0f, 255.0f);
-						B = clampFloat(B, 0.0f, 255.0f);
-						Y = 0.299f*R+0.587f*G+0.114f*B;
-						I = 0.595716f*R-0.274452f*G-0.321263f*B;
-						Q = 0.211456f*R-0.522591f*G+0.311135f*B;
-						if ((x%600 == 599) && (y%300 == 299))
-						{
-							printf("JAT R:%d G:%d B:%d Y:%d I:%d Q:%d\n", (int)R, (int)G, (int)B, (int)Y, (int)I, (int)Q);
-						}
-
-						outputValue = Y+Q*sinf(carrierAngle)+I*cosf(carrierAngle);
-						outputValue = clampFloat(outputValue, 0.0f, 255.0f);
-						outputValue = (outputValue/255.0f)*(NTSC_VALUE_WHITE-NTSC_VALUE_BLACK);
-						sampleValue = (unsigned char)(NTSC_VALUE_BLACK + outputValue);
-						sampleComputed = 1;
-					}
-				}
-				output[sampleCounter] = sampleValue;
-				sampleCounter++;
-				carrierAngle += ((float)M_PI/2.0f);
-				if (carrierAngle > (float)(2.0f*M_PI))
-				{
-					carrierAngle -= (float)(2.0f*M_PI);
-				}
+			R = clampFloat(R, 0.0f, 255.0f);
+			G = clampFloat(G, 0.0f, 255.0f);
+			B = clampFloat(B, 0.0f, 255.0f);
+			Y = 0.299f*R+0.587f*G+0.114f*B;
+			I = 0.595716f*R-0.274452f*G-0.321263f*B;
+			Q = 0.211456f*R-0.522591f*G+0.311135f*B;
+			if ((s_encodeXpos%600 == 599) && (s_encodeYpos%300 == 299))
+			{
+				printf("JAT R:%d G:%d B:%d Y:%d I:%d Q:%d\n", (int)R, (int)G, (int)B, (int)Y, (int)I, (int)Q);
 			}
+
+			outputValue = Y+Q*sinf(s_encodeCarrierAngle)+I*cosf(s_encodeCarrierAngle);
+			outputValue = clampFloat(outputValue, 0.0f, 255.0f);
+			outputValue = (outputValue/255.0f)*(NTSC_VALUE_WHITE-NTSC_VALUE_BLACK);
+			sampleValue = (unsigned char)(NTSC_VALUE_BLACK + outputValue);
+			sampleComputed = 1;
 		}
 	}
-	file = fopen(fileName, "wb");
-	if (file == NULL)
+	s_encodeOutput[s_encodeSampleCounter] = sampleValue;
+	s_encodeSampleCounter++;
+	if (s_encodeSampleCounter >= s_encodeOutputSize)
 	{
-		fprintf(stderr, "ERROR can't open NTSC data file '%s'\n", fileName);
-		return;
+		s_encodeSampleCounter = 0;
 	}
-	numBytesWritten = fwrite((void*)output, 1, frameSize, file);
-	if (numBytesWritten != frameSize)
+	s_encodeCarrierAngle += ((float)M_PI/2.0f);
+	if (s_encodeCarrierAngle > (float)(2.0f*M_PI))
 	{
-		fprintf(stderr, "ERROR writing frame data '%s' %d != %d\n", fileName, numBytesWritten, frameSize);
-		return;
+		s_encodeCarrierAngle -= (float)(2.0f*M_PI);
 	}
-	fclose(file);
-	free(output);
+	s_encodeXpos++;
+	if (s_encodeXpos >= NTSC_SAMPLES_PER_LINE)
+	{
+		s_encodeXpos = 0;
+		s_encodeYpos += 2;
+		if (s_encodeYpos >= NTSC_LINES_PER_FRAME)
+		{
+			s_encodeYpos -= NTSC_LINES_PER_FRAME;
+		}
+	}
+	return sampleValue;
+}
+
+void ntscEncodeTick(void)
+{
 }
 
 /* Public API */
@@ -788,8 +755,8 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 
 	s_displayModeFlags = DISPLAY_RGB | (DISPLAY_INTERLACED << 16);
 	s_pVideoMemoryBGRA = pVideoMemoryBGRA;
-	s_xpos = 0;
-	s_ypos = 0;
+	s_decodeXpos = 0;
+	s_decodeYpos = 0;
 	s_pixelPos = 0;
 
 	initColourBurstData();
@@ -828,8 +795,6 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA)
 	s_colourBurstFound = 0;
 
 	computeGammaTable();
-
-	ntscEncodeTest();
 }
 
 void ntscDecodeAddSample(const unsigned char sampleValue)
@@ -942,8 +907,8 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 #if 0
 					{
 						const float burstK = sqrtf(burstA*burstA + burstB*burstB);
-						printf("y:%d BestFit A:%f B:%f K:%f omega:%f\n", s_ypos, burstA, burstB, burstK, (float)burstOmega*(180.0f/M_PI));
-						printf("y:%d newVals:%f %f %f %f\n", s_ypos, newVals[0], newVals[1], newVals[2], newVals[3]);
+						printf("y:%d BestFit A:%f B:%f K:%f omega:%f\n", s_decodeYpos, burstA, burstB, burstK, (float)burstOmega*(180.0f/M_PI));
+						printf("y:%d newVals:%f %f %f %f\n", s_decodeYpos, newVals[0], newVals[1], newVals[2], newVals[3]);
 					}
 #endif /* #if 0 */
 
@@ -955,7 +920,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 				else
 				{
 #if 0
-					printf("Monochrome line - no colour burst y:%d\n", s_ypos);
+					printf("Monochrome line - no colour burst y:%d\n", s_decodeYpos);
 #endif /* #if 0 */
 				}
 				s_colourBurstFound = 1;
@@ -970,27 +935,27 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		{
 			/* HSYNC */
 #if 0
-			printf("\tHSYNC x:%d y:%d\n", s_xpos, s_ypos);
+			printf("\tHSYNC x:%d y:%d\n", s_decodeXpos, s_decodeYpos);
 #endif /* #if 0 */
 
-			s_xpos = 0;
+			s_decodeXpos = 0;
 			lineInit();
 
 			s_hsyncPosition = s_samplesPerField;
 			s_sampleCounter = 0;
 			if (displayFlags & DISPLAY_INTERLACED)
 			{
-				s_ypos += 2;
+				s_decodeYpos += 2;
 			}
 			else
 			{
-				s_ypos++;
+				s_decodeYpos++;
 			}
-			if (s_ypos >= NTSC_LINES_PER_FRAME)
+			if (s_decodeYpos >= NTSC_LINES_PER_FRAME)
 			{
-				s_ypos = NTSC_LINES_PER_FRAME-1;
+				s_decodeYpos = NTSC_LINES_PER_FRAME-1;
 			}
-			pixelPos = s_ypos * NTSC_SAMPLES_PER_LINE;
+			pixelPos = s_decodeYpos * NTSC_SAMPLES_PER_LINE;
 			s_hsyncFound = 1;
 			s_colourBurstFound = 0;
 		}
@@ -998,20 +963,20 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		{
 			/* VSYNC */
 #if 0
-			printf("VSYNC x:%d y:%d syncSamples:%d samples:%d\n", s_xpos, s_ypos, s_syncSamples, s_samplesPerField);
+			printf("VSYNC x:%d y:%d syncSamples:%d samples:%d\n", s_decodeXpos, s_decodeYpos, s_syncSamples, s_samplesPerField);
 #endif /* #if 0 */
 			s_fieldCounter++;
-			s_ypos = s_fieldCounter & 0x1;
+			s_decodeYpos = s_fieldCounter & 0x1;
 			if (displayFlags & DISPLAY_INTERLACED)
 			{
 			}
 			else
 			{
-				s_ypos *= 262;
+				s_decodeYpos *= 262;
 			}
-			pixelPos = s_ypos * NTSC_SAMPLES_PER_LINE;
+			pixelPos = s_decodeYpos * NTSC_SAMPLES_PER_LINE;
 			/*
-			printf("VSYNC newy:%d\n", s_ypos);
+			printf("VSYNC newy:%d\n", s_decodeYpos);
 			*/
 			s_samplesPerField = 0;
 			s_vsyncFound = 1;
@@ -1057,7 +1022,7 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			Y = (int)yval;
 			I = (int)ival;
 			Q = (int)qval;
-			if ((s_xpos%600 == 599) && (s_ypos%300 == 299))
+			if ((s_decodeXpos%600 == 599) && (s_decodeYpos%300 == 299))
 			{
 				printf("NES R:%d G:%d B:%d Y:%d I:%d Q:%d\n", R, G, B, Y, I, Q);
 			}
@@ -1125,13 +1090,13 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 		green = (unsigned int)clampInt((int)green, 0, 255);
 		blue = (unsigned int)clampInt((int)blue, 0, 255);
 
-		if (((s_ypos == 200) || (s_ypos == 201)) && (s_xpos == 150))
+		if (((s_decodeYpos == 200) || (s_decodeYpos == 201)) && (s_decodeXpos == 150))
 		{
-			if ((s_ypos > 0) && (s_xpos > 0))
+			if ((s_decodeYpos > 0) && (s_decodeXpos > 0))
 			{
 				/*
 				printf("x:%d y:%d RGB:%d, %d, %d Value:%d Y:%d C:%d I:%d Q:%d\n", 
-						s_xpos, s_ypos, red, green, blue, sampleValue, Y, C, I, Q);
+						s_decodeXpos, s_decodeYpos, red, green, blue, sampleValue, Y, C, I, Q);
 				*/
 			}
 		}
@@ -1147,12 +1112,12 @@ void ntscDecodeAddSample(const unsigned char sampleValue)
 			s_blankSamples = 0;
 		}
 
-		s_xpos++;
+		s_decodeXpos++;
 		s_jakeI++;
 		pixelPos++;
-		if (s_xpos >= NTSC_SAMPLES_PER_LINE)
+		if (s_decodeXpos >= NTSC_SAMPLES_PER_LINE)
 		{
-			s_xpos = NTSC_SAMPLES_PER_LINE-1;
+			s_decodeXpos = NTSC_SAMPLES_PER_LINE-1;
 			pixelPos--;
 		}
 		s_pixelPos = pixelPos;

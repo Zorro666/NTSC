@@ -23,6 +23,10 @@ void ntscDecodeInit(unsigned int* pVideoMemoryBGRA);
 void ntscDecodeAddSample(const unsigned char sampleValue);
 void ntscDecodeTick(void);
 
+void ntscEncodeInit(unsigned char* pOutputSignal, const unsigned int outputSize);
+unsigned char ntscEncodeAddSample(const unsigned int RGB);
+void ntscEncodeTick(void);
+
 extern int windowCheckKey(const int key);
 extern void windowClearKey(const int key);
 
